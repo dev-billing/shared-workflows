@@ -4,8 +4,8 @@ import {
   readMeta,
   writeMeta,
   invalidateMetaCache,
+  parseGatewayYml,
 } from "../api/meta-yml.js";
-import { parseGatewayYml } from "../api/service-config.js";
 import { deleteFile, getFileContent, getRepo } from "../api/repos.js";
 import { ORG } from "../config.js";
 import { readRepoList } from "../api/repo-list.js";

@@ -40,7 +40,7 @@ export function openApplyModal(feature, targetRepo, onDone) {
   // ─── extraSetup === "meta-yml" 인 경우 docs/_meta.yml 입력 폼 ───
   let envForm = null;
   let envFormEl = null;
-  let needsMetaYml = feature.extraSetup === "meta-yml" || feature.extraSetup === "service-config";
+  let needsMetaYml = feature.extraSetup === "meta-yml";
 
   if (needsMetaYml) {
     envForm = buildEnvForm({}, { serviceName: targetRepo.name });

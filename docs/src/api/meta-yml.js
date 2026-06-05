@@ -265,3 +265,36 @@ export async function writeMeta(repoName, meta, { branch, message } = {}) {
 
 // 위 unit 함수 외에 직접 serialize/parse 필요할 때.
 export { parseMeta, serializeMeta };
+
+// Spring Cloud Gateway 라우트 YML 한 블록을 파싱해 group 후보 dict 반환.
+// 입력 예:
+//   - id: pay-api
+//     uri: lb://bill-pay-api
+//     predicates:
+//       - Path=/pay/**
+//     filters:
+//       - RewritePath=/pay/(?<segment>/?.*), /external/${segment}
+// 결과: { name, externalUrlPrefix, internalUrlPrefix }
+export function parseGatewayYml(text) {
+  if (!text) return null;
+  const result = { name: "", externalUrlPrefix: "", internalUrlPrefix: "" };
+
+  const idMatch = text.match(/(?:^|\n)\s*-?\s*id:\s*([\w.-]+)/);
+  if (idMatch) result.name = idMatch[1].trim();
+
+  const pathMatch = text.match(/Path\s*=\s*([^\s,'"\]]+)/);
+  if (pathMatch) {
+    result.externalUrlPrefix = pathMatch[1].replace(/\/\*+$/, "").replace(/\*+$/, "").replace(/\/+$/, "");
+  }
+
+  const rewriteMatch = text.match(/RewritePath\s*=\s*[^,]+,\s*([^\s'"\]]+)/);
+  if (rewriteMatch) {
+    let dest = rewriteMatch[1];
+    dest = dest.replace(/\$\{[^}]+\}/g, "");
+    dest = dest.replace(/\/$/, "");
+    result.internalUrlPrefix = dest;
+  }
+
+  if (!result.externalUrlPrefix && !result.internalUrlPrefix) return null;
+  return result;
+}
