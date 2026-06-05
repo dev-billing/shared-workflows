@@ -51,7 +51,7 @@ jobs:
         with:
           app-id: ${{ secrets.CODE_REVIEW_APP_ID }}
           private-key: ${{ secrets.CODE_REVIEW_APP_PRIVATE_KEY }}
-          owner: dev-billing
+          owner: ${{ github.repository_owner }}
 
       - name: Checkout service repo
         uses: actions/checkout@v4
@@ -63,7 +63,7 @@ jobs:
       - name: Checkout shared-workflows
         uses: actions/checkout@v4
         with:
-          repository: dev-billing/shared-workflows
+          repository: ${{ github.repository_owner }}/shared-workflows
           token: ${{ steps.app-token.outputs.token }}
           path: shared-config
 

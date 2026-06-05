@@ -22,7 +22,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write   # ← 추가
-    uses: dev-billing/shared-workflows/.github/workflows/claude-review.yml@main
+    uses: ${{ github.repository_owner }}/shared-workflows/.github/workflows/claude-review.yml@main
     with:
       pr_number: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
       repo_name: ${{ github.repository }}

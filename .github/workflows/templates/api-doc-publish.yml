@@ -10,7 +10,7 @@ on:
 jobs:
   publish:
     name: Publish to Dooray Wiki
-    uses: dev-billing/shared-workflows/.github/workflows/reusable-publish-final.yml@main
+    uses: ${{ github.repository_owner }}/shared-workflows/.github/workflows/reusable-publish-final.yml@main
     with:
       api_key: ${{ inputs.api_key }}
       repo_name: ${{ github.repository }}
