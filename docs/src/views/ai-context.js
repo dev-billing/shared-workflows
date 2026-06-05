@@ -217,14 +217,26 @@ export async function renderAiContext(root) {
         null,
         rows.map((r) => {
           const meta = STATUS_META[r.status] || STATUS_META.error;
-          const have = r.files.length;
-          const expect = r.expectedFiles.length;
+          const requiredHave = r.requiredPresent.length;
+          const requiredExpect = r.requiredFiles.length;
+          const optionalHave = r.optionalPresent.length;
+          // 필수 진행률만 분수로 표시. 선택 파일은 있을 때 +N 으로 가시화만.
           const filesText =
             r.status === "missing"
               ? "—"
-              : `${have}/${expect}`;
-          const filesTitle =
-            r.files.length > 0 ? r.files.join("\n") : "";
+              : `${requiredHave}/${requiredExpect}` +
+                (optionalHave > 0 ? ` (+${optionalHave})` : "");
+          // 툴팁: 어떤 파일이 있는지 그룹별로 보여줌
+          const filesTitle = [
+            r.requiredPresent.length
+              ? `[필수] ${r.requiredPresent.join(", ")}`
+              : "[필수] (없음)",
+            r.optionalPresent.length
+              ? `[선택] ${r.optionalPresent.join(", ")}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join("\n");
 
           return h(
             "tr",

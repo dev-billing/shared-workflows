@@ -5,7 +5,8 @@ import {
   CONTEXT_REPO,
   CONTEXT_REPOS_JSON_PATH,
   CONTEXT_STATE_DIR,
-  AI_CONTEXT_EXPECTED_FILES,
+  AI_CONTEXT_REQUIRED_FILES,
+  AI_CONTEXT_OPTIONAL_FILES,
 } from "../config.js";
 
 // 인메모리 TTL 캐시 (60초)
@@ -60,8 +61,11 @@ async function loadContextTree(allowedRepos) {
     const ctxMatch = node.path.match(/^([^/]+)\/ai-context\/([^/]+)$/);
     if (ctxMatch && allowed.has(ctxMatch[1])) {
       const r = ctxMatch[1];
+      const fname = ctxMatch[2];
+      // .gitkeep 등 숨김/placeholder 파일은 ai-context 로 간주하지 않음
+      if (fname.startsWith(".")) continue;
       byRepo[r] = byRepo[r] || { files: [], hasState: false };
-      byRepo[r].files.push(ctxMatch[2]);
+      byRepo[r].files.push(fname);
     }
   }
   return { byRepo, truncated: Boolean(data.truncated) };
@@ -98,8 +102,18 @@ async function loadRepoStatus(entry, treeInfo) {
     readBranchSha(repo, branch).catch(() => null),
   ]);
 
+  // 필수/선택 파일 분리 카운트
+  //   - present  : 실제로 존재하는 ai-context 파일 전체 (placeholder 제외됨)
+  //   - required : 필수 파일 중 실제 존재하는 것
+  //   - optional : 선택 파일 중 실제 존재하는 것
+  //   진행률(have/expect) 표시는 required 기준으로만 사용한다.
+  const requiredSet = new Set(AI_CONTEXT_REQUIRED_FILES);
+  const optionalSet = new Set(AI_CONTEXT_OPTIONAL_FILES);
+  const requiredPresent = treeEntry.files.filter((f) => requiredSet.has(f));
+  const optionalPresent = treeEntry.files.filter((f) => optionalSet.has(f));
+
   let status;
-  if (!stateSha && treeEntry.files.length === 0) status = "missing";
+  if (!stateSha && requiredPresent.length === 0) status = "missing";
   else if (!branchSha) status = "error";
   else if (stateSha === branchSha) status = "up-to-date";
   else status = "outdated";
@@ -110,7 +124,10 @@ async function loadRepoStatus(entry, treeInfo) {
     stateSha,
     branchSha,
     files: treeEntry.files,
-    expectedFiles: AI_CONTEXT_EXPECTED_FILES,
+    requiredPresent,
+    optionalPresent,
+    requiredFiles: AI_CONTEXT_REQUIRED_FILES,
+    optionalFiles: AI_CONTEXT_OPTIONAL_FILES,
     status,
   };
 }

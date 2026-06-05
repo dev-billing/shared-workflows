@@ -26,8 +26,12 @@ def run_claude(prompt: str, timeout: int = 1200) -> tuple[int, str]:
     return result.returncode, result.stdout
 
 
-def write_context_files(output: str, context_dir: Path) -> list[str]:
-    """Claude 출력(JSON)을 파싱해서 파일로 저장. 저장된 파일 목록 반환."""
+def write_context_files(output: str, context_dir: Path) -> tuple[list[str], bool]:
+    """Claude 출력(JSON)을 파싱해서 파일로 저장.
+    반환: (저장된 파일 목록, 파싱 성공 여부).
+    빈 배열([])이 정상적으로 파싱되면 ([], True) — "변경 없음".
+    파싱 자체가 실패하면 ([], False) — 에러로 취급해야 함.
+    """
     try:
         json_match = re.search(r'\[.*\]', output, re.DOTALL)
         raw = json_match.group() if json_match else output.strip()
@@ -39,11 +43,11 @@ def write_context_files(output: str, context_dir: Path) -> list[str]:
             file_path = context_dir / item["file"]
             file_path.write_text(item["content"], encoding="utf-8")
             written.append(item["file"])
-        return written
+        return written, True
     except (json.JSONDecodeError, KeyError) as e:
         print(f"    JSON 파싱 실패: {e}")
         print(f"    출력 앞부분:\n{output[:500]}")
-        return []
+        return [], False
 
 
 OUTPUT_FORMAT = """
@@ -130,7 +134,20 @@ def sync_repo(repo_name: str, org: str, branch: str, force: bool) -> bool:
     context_dir = Path(f"{repo_name}/ai-context")
     context_exists = context_dir.exists() and any(context_dir.iterdir())
 
-    if context_exists and not force:
+    # 전체 재생성 조건:
+    #   - force=true (사용자 명시)
+    #   - ai-context 디렉토리 없음 (최초 생성)
+    #   - state SHA 파일 없음 (이전 동기화 이력 자체가 없음 → 부분 diff 기준점이 없음)
+    full_regen = force or not context_exists or not stored_sha
+    if full_regen:
+        reason = "force" if force else ("context 없음" if not context_exists else "SHA 파일 없음")
+        print(f"  🆕 전체 생성 실행 ({reason})")
+        prompt = f"""{GENERATE_INSTRUCTIONS}
+
+소스코드: {source_dir}/
+
+{OUTPUT_FORMAT}"""
+    else:
         print(f"  📝 부분 업데이트 실행")
         changed_files = get_changed_files(source_dir)
         prompt = f"""{UPDATE_INSTRUCTIONS}
@@ -141,29 +158,28 @@ def sync_repo(repo_name: str, org: str, branch: str, force: bool) -> bool:
 {changed_files}
 
 {OUTPUT_FORMAT}"""
-    else:
-        print(f"  🆕 최초 생성 실행")
-        prompt = f"""{GENERATE_INSTRUCTIONS}
-
-소스코드: {source_dir}/
-
-{OUTPUT_FORMAT}"""
 
     rc, output = run_claude(prompt)
     if rc != 0:
         print(f"  ❌ Claude 실행 실패 (종료 코드: {rc}) — SHA 저장 안 함")
         return False
 
-    written = write_context_files(output, context_dir)
-    if not written:
-        print(f"  ❌ 파일 저장 실패 — SHA 저장 안 함")
+    written, parse_ok = write_context_files(output, context_dir)
+    if not parse_ok:
+        print(f"  ❌ JSON 파싱 실패 — SHA 저장 안 함")
         return False
 
-    print(f"  📄 저장된 파일: {', '.join(written)}")
+    # 파싱은 성공했고 written이 비어있으면 "변경 없음" — SHA만 갱신해서 다음 sync에 재실행되지 않도록.
     state_file.parent.mkdir(exist_ok=True)
     state_file.write_text(latest_sha)
-    print(f"  ✅ {repo_name} 완료")
-    return True
+
+    if written:
+        print(f"  📄 저장된 파일: {', '.join(written)}")
+        print(f"  ✅ {repo_name} 완료 — 파일 갱신")
+        return True
+    else:
+        print(f"  ℹ️  변경 필요 없음 — SHA만 {short_new}로 갱신")
+        return False
 
 
 def update_root_context(repos: list[dict]) -> None:
@@ -201,9 +217,14 @@ def update_root_context(repos: list[dict]) -> None:
         print(f"  ❌ 루트 context Claude 실패")
         return
 
-    written = write_context_files(output, Path(".claude/ai-context"))
+    written, parse_ok = write_context_files(output, Path(".claude/ai-context"))
+    if not parse_ok:
+        print("  ❌ 루트 context JSON 파싱 실패")
+        return
     if written:
         print(f"  📄 루트 저장: {', '.join(written)}")
+    else:
+        print("  ℹ️  루트 context 변경 필요 없음")
     print("  ✅ 루트 ai-context 완료")
 
 
