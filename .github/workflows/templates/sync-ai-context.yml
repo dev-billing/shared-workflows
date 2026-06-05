@@ -30,7 +30,7 @@ jobs:
   sync:
     # PR이 실제로 merge 된 경우에만 실행 (close 만 된 경우 skip)
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
-    uses: ${{ github.repository_owner }}/shared-workflows/.github/workflows/sync-ai-context.yml@main
+    uses: dev-billing/shared-workflows/.github/workflows/sync-ai-context.yml@main
     with:
       repo-name: ${{ github.event.repository.name }}
       context-repo: billing-context

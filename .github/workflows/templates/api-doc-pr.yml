@@ -11,7 +11,7 @@ jobs:
   generate-pr-drafts:
     name: Generate PR API Doc Drafts
     if: github.event.action == 'opened' || github.event.action == 'reopened'
-    uses: ${{ github.repository_owner }}/shared-workflows/.github/workflows/reusable-generate-pr-drafts.yml@main
+    uses: dev-billing/shared-workflows/.github/workflows/reusable-generate-pr-drafts.yml@main
     with:
       pr_number: ${{ github.event.pull_request.number }}
       repo_name: ${{ github.repository }}
@@ -22,7 +22,7 @@ jobs:
   handle-on-merge:
     name: Publish API Docs on Merge
     if: github.event.action == 'closed' && github.event.pull_request.merged == true
-    uses: ${{ github.repository_owner }}/shared-workflows/.github/workflows/reusable-generate-pr-drafts.yml@main
+    uses: dev-billing/shared-workflows/.github/workflows/reusable-generate-pr-drafts.yml@main
     with:
       pr_number: ${{ github.event.pull_request.number }}
       repo_name: ${{ github.repository }}
@@ -33,7 +33,7 @@ jobs:
   cleanup-on-close:
     name: Cleanup Drafts on Close
     if: github.event.action == 'closed' && github.event.pull_request.merged == false
-    uses: ${{ github.repository_owner }}/shared-workflows/.github/workflows/reusable-generate-pr-drafts.yml@main
+    uses: dev-billing/shared-workflows/.github/workflows/reusable-generate-pr-drafts.yml@main
     with:
       pr_number: ${{ github.event.pull_request.number }}
       repo_name: ${{ github.repository }}
