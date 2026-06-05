@@ -1,5 +1,6 @@
 [
   "todo-service",
   "payment-service",
-  "movie-service"
+  "movie-service",
+  "user-service"
 ]
