@@ -914,12 +914,14 @@ def _parse_table(lines: list) -> tuple:
 
     표가 없으면 (None, None, -1, -1). rows[i] 는 {col: cell} dict, 첫 컬럼을 key 로도 보존.
     """
+    import unicodedata
     n = len(lines)
     i = 0
     while i < n:
         if _TABLE_ROW_RE.match(lines[i]) and i + 1 < n and _TABLE_SEP_RE.match(lines[i + 1]):
-            # header
-            header = [c.strip() for c in lines[i].strip().strip("|").split("|")]
+            # header — NFC 정규화로 NFC/NFD 차이 흡수 (dict key 일관성)
+            header = [unicodedata.normalize("NFC", c.strip())
+                      for c in lines[i].strip().strip("|").split("|")]
             start = i
             j = i + 2
             rows = []
@@ -936,13 +938,19 @@ def _parse_table(lines: list) -> tuple:
 
 
 def _normalize_cell(s: str) -> str:
-    """표 셀 정규화 — 백틱·강조·공백 차이를 동일하게 본다."""
+    """표 셀 정규화 — 백틱·강조·공백·유니코드 차이를 동일하게 본다.
+
+    한글 NFC/NFD, 다양한 공백 문자(em space, NBSP 등), 백틱·강조·트레일링 공백을 모두 흡수.
+    """
     if s is None:
         return ""
+    import unicodedata
+    s = unicodedata.normalize("NFC", s)
     s = re.sub(r"`+", "", s)
     s = re.sub(r"\*+", "", s)
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
+    # 모든 공백류(NBSP·zero-width 등 포함) → 단일 ASCII 공백
+    s = re.sub(r"[\s ​-‍﻿]+", " ", s)
+    return s.strip()
 
 
 def _row_key(header: list, row: dict) -> str:
@@ -1043,6 +1051,25 @@ def _diff_code_blocks(prev_lines: list, new_lines: list) -> list:
         except Exception:
             return re.sub(r"\s+", " ", b).strip()
 
+    def line_level_diff(prev: str, new: str) -> list:
+        """코드블록 두 개를 줄 단위 unified_diff 로 비교해 변경된 줄만 -/+ 로.
+
+        @@/+++/--- 헤더 라인은 버리고 실제 -/+ context 만 남긴다.
+        변경이 없으면 빈 리스트.
+        """
+        p_lines = prev.splitlines()
+        n_lines = new.splitlines()
+        if p_lines == n_lines:
+            return []
+        diff = list(difflib.unified_diff(p_lines, n_lines, n=1, lineterm=""))
+        # 헤더 라인(@@, ---, +++) 제거하고 - / + / 컨텍스트만 남김
+        out = []
+        for ln in diff:
+            if ln.startswith("---") or ln.startswith("+++") or ln.startswith("@@"):
+                continue
+            out.append(ln)
+        return out
+
     p_raw = extract_blocks(prev_lines)
     n_raw = extract_blocks(new_lines)
     out = []
@@ -1050,9 +1077,9 @@ def _diff_code_blocks(prev_lines: list, new_lines: list) -> list:
     for i in range(common):
         if normalize_block(p_raw[i]) == normalize_block(n_raw[i]):
             continue
-        block = [f"- {ln}" for ln in p_raw[i].splitlines()] + \
-                [f"+ {ln}" for ln in n_raw[i].splitlines()]
-        out.append((f"코드블록 #{i+1} 변경", block))
+        block = line_level_diff(p_raw[i], n_raw[i])
+        if block:
+            out.append((f"코드블록 #{i+1} 변경", block))
     for i in range(common, len(n_raw)):
         block = [f"+ {ln}" for ln in n_raw[i].splitlines()]
         out.append((f"코드블록 #{i+1} 추가", block))
