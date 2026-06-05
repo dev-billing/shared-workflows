@@ -45,17 +45,22 @@ export const FEATURES = [
         source: ".github/workflows/templates/api-doc-pr.yml",
         target: ".github/workflows/api-doc-pr.yml",
       },
+      {
+        // ApiDocs.java 어노테이션 자동 배포 (placeholder 치환)
+        source: ".github/workflows/templates/ApiDocs.java.template",
+        target: "src/main/java/{PACKAGE_PATH}/apidoc/ApiDocs.java",
+        transform: "java-package",
+      },
     ],
     manualWorkflows: [
       { file: "api-doc-pr.yml", label: "Publish (manual)" },
     ],
     // 신규 흐름:
-    //  - 어노테이션: @ApiDocs (target repo 가 직접 정의)
+    //  - 어노테이션 @ApiDocs: 이 적용 시 target repo 에 자동 배포 (placeholder 치환)
     //  - 문서: target repo 의 docs/*.md (로컬 /api-docs 명령으로 생성·수정)
-    //  - 메타: target repo 의 docs/_meta.yml (도메인·게이트웨이·그룹)
-    //  - 트리거: PR merge → docs/*.md → Dooray 페이지 동기화
-    //  shared-workflows 의 service-config.json 은 더 이상 사용 안 함.
-    extraSetup: "none",
+    //  - 메타: target repo 의 docs/_meta.yml (적용 시 폼으로 입력받아 자동 생성)
+    //  - publish: PR merge → docs/*.md → Dooray 페이지 동기화
+    extraSetup: "meta-yml",
   },
   {
     id: "ai-context-sync",

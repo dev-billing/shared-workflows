@@ -1,9 +1,11 @@
 import { h, mount, clear } from "../utils/dom.js";
 import { getFileContent, putFile, getRepo } from "../api/repos.js";
+import { ghFetch } from "../api/github.js";
 import { ORG, SHARED_WORKFLOWS_REPO } from "../config.js";
-import { readServiceEntry, upsertServiceEntry } from "../api/service-config.js";
+import { readMeta, writeMeta } from "../api/meta-yml.js";
 import { toast } from "../utils/toast.js";
 import { buildEnvForm } from "../utils/env-form.js";
+import { encodeB64 } from "../utils/b64.js";
 
 // 적용 모달.
 //   feature : FEATURES[i]
@@ -35,12 +37,12 @@ export function openApplyModal(feature, targetRepo, onDone) {
     ...feature.files.map((f) => h("li", null, h("code", null, f.target)))
   );
 
-  // ─── extraSetup === "service-config" 인 경우 env URL 입력 폼 ───
+  // ─── extraSetup === "meta-yml" 인 경우 docs/_meta.yml 입력 폼 ───
   let envForm = null;
   let envFormEl = null;
-  let needsServiceConfig = feature.extraSetup === "service-config";
+  let needsMetaYml = feature.extraSetup === "meta-yml" || feature.extraSetup === "service-config";
 
-  if (needsServiceConfig) {
+  if (needsMetaYml) {
     envForm = buildEnvForm({}, { serviceName: targetRepo.name });
     envFormEl = h(
       "div",
@@ -49,7 +51,7 @@ export function openApplyModal(feature, targetRepo, onDone) {
         "div",
         { class: "quick-setup__head" },
         h("span", { class: "quick-setup__badge" }, "빠른 설정"),
-        h("span", { class: "quick-setup__title" }, "기본 도메인 URL")
+        h("span", { class: "quick-setup__title" }, "기본 도메인 URL (docs/_meta.yml)")
       ),
       h(
         "p",
@@ -77,11 +79,11 @@ export function openApplyModal(feature, targetRepo, onDone) {
       )
     );
 
-    // 기존 값이 있으면 미리 채워넣기
-    readServiceEntry(targetRepo.name)
-      .then((entry) => {
-        if (entry && entry.environments && Object.keys(entry.environments).length) {
-          envForm.reset(entry.environments);
+    // 기존 _meta.yml 이 있으면 미리 채워넣기
+    readMeta(targetRepo.name)
+      .then((r) => {
+        if (r && r.meta && r.meta.environments && Object.keys(r.meta.environments).length) {
+          envForm.reset(r.meta.environments);
         }
       })
       .catch(() => {});
@@ -93,11 +95,18 @@ export function openApplyModal(feature, targetRepo, onDone) {
     try {
       await applyFeature(feature, targetRepo, statusBox);
 
-      if (needsServiceConfig) {
+      if (needsMetaYml) {
         const environments = envForm.getValues();
-        appendStatus(statusBox, `→ service-config.json 갱신 중...`);
-        await upsertServiceEntry(targetRepo.name, environments);
-        appendStatus(statusBox, `✓ service-config.json 갱신 완료`);
+        appendStatus(statusBox, `→ docs/_meta.yml 작성 중...`);
+        await writeMeta(targetRepo.name, {
+          environments,
+          useGateway: false,
+          gateway: [],
+          groups: [],
+        }, {
+          message: `chore: create docs/_meta.yml for ${targetRepo.name}`,
+        });
+        appendStatus(statusBox, `✓ docs/_meta.yml 작성 완료`);
       }
 
       toast(`${feature.label} 적용 완료`, "success");
@@ -144,30 +153,79 @@ export function openApplyModal(feature, targetRepo, onDone) {
 }
 
 // ── 모달 없이 단일 레포에 적용 (deploy view 일괄 적용용) ──
-//   service-config 등 extraSetup 이 필요한 feature 는 일괄 적용 시
-//   환경 URL 을 받을 수 없으므로 파일만 복사한다. 적용 후 사용자에게
-//   개별 모달로 service-config 등록을 안내한다.
 export async function applyFeatureToRepo(feature, targetRepo) {
   let defaultBranch = targetRepo.default_branch;
   if (!defaultBranch) {
     const meta = await getRepo(targetRepo.owner.login, targetRepo.name);
     defaultBranch = meta.default_branch;
   }
+  // ApiDocs.java 같은 placeholder 치환이 필요한 파일에 미리 root 패키지 검출
+  const needsPackage = feature.files.some((f) => f.transform === "java-package");
+  let rootPackage = null;
+  let rootPackagePath = null;
+  if (needsPackage) {
+    const detected = await detectRootJavaPackage(targetRepo.owner.login, targetRepo.name, defaultBranch);
+    rootPackage = detected.dotted;
+    rootPackagePath = detected.slashed;
+  }
+
   for (const file of feature.files) {
-    const source = await getFileContent(ORG, SHARED_WORKFLOWS_REPO, file.source);
-    if (!source) throw new Error(`템플릿 없음: ${file.source}`);
+    let sourceContent;
+    let targetPath = file.target;
+    if (file.transform === "java-package") {
+      if (!rootPackage) {
+        // 패키지 미검출 시 스킵 + 경고
+        console.warn(`[apply] ${feature.id}: root 패키지 검출 실패, ${file.target} 스킵`);
+        continue;
+      }
+      const tpl = await getFileContent(ORG, SHARED_WORKFLOWS_REPO, file.source);
+      if (!tpl) throw new Error(`템플릿 없음: ${file.source}`);
+      sourceContent = atob(tpl.content.replace(/\n/g, ""))
+        .replace(/\{\{PACKAGE\}\}/g, rootPackage + ".apidoc");
+      targetPath = file.target.replace(/\{PACKAGE_PATH\}/g, rootPackagePath);
+    } else {
+      const source = await getFileContent(ORG, SHARED_WORKFLOWS_REPO, file.source);
+      if (!source) throw new Error(`템플릿 없음: ${file.source}`);
+      sourceContent = atob(source.content.replace(/\n/g, ""));
+    }
     const existing = await getFileContent(
       targetRepo.owner.login,
       targetRepo.name,
-      file.target,
+      targetPath,
       defaultBranch
     );
-    await putFile(targetRepo.owner.login, targetRepo.name, file.target, {
-      contentB64: source.content.replace(/\n/g, ""),
-      message: `chore: apply ${feature.id} workflow (${file.target.split("/").pop()})`,
+    await putFile(targetRepo.owner.login, targetRepo.name, targetPath, {
+      contentB64: encodeB64(sourceContent),
+      message: `chore: apply ${feature.id} (${targetPath.split("/").pop()})`,
       sha: existing ? existing.sha : undefined,
       branch: defaultBranch,
     });
+  }
+}
+
+// target repo 의 src/main/java 하위에서 root 패키지 검출.
+// 가장 깊은 공통 디렉토리 prefix → 점 표기로 변환. 검출 실패 시 null.
+async function detectRootJavaPackage(owner, repoName, branch) {
+  try {
+    let path = "src/main/java";
+    const segments = [];
+    for (let depth = 0; depth < 10; depth++) {
+      const entries = await ghFetch(
+        `/repos/${owner}/${repoName}/contents/${path}?ref=${branch}`
+      ).catch(() => null);
+      if (!Array.isArray(entries)) break;
+      const dirs = entries.filter((e) => e.type === "dir");
+      if (dirs.length !== 1) break; // 분기 → 여기서 멈춤
+      segments.push(dirs[0].name);
+      path = `${path}/${dirs[0].name}`;
+    }
+    if (!segments.length) return { dotted: null, slashed: null };
+    return {
+      dotted: segments.join("."),
+      slashed: segments.join("/"),
+    };
+  } catch (e) {
+    return { dotted: null, slashed: null };
   }
 }
 
@@ -197,37 +255,61 @@ function appendStatus(box, msg) {
 }
 
 async function applyFeature(feature, targetRepo, statusBox) {
-  // default branch 확보 (목록 응답에 들어있긴 한데 안전하게 다시 조회)
   let defaultBranch = targetRepo.default_branch;
   if (!defaultBranch) {
     const meta = await getRepo(targetRepo.owner.login, targetRepo.name);
     defaultBranch = meta.default_branch;
   }
 
+  // placeholder 치환이 필요한 파일이 있으면 root 패키지 먼저 검출
+  const needsPackage = feature.files.some((f) => f.transform === "java-package");
+  let rootPackage = null;
+  let rootPackagePath = null;
+  if (needsPackage) {
+    appendStatus(statusBox, `→ root 패키지 검출 중...`);
+    const detected = await detectRootJavaPackage(targetRepo.owner.login, targetRepo.name, defaultBranch);
+    rootPackage = detected.dotted;
+    rootPackagePath = detected.slashed;
+    if (!rootPackage) {
+      appendStatus(statusBox, `⚠ root 패키지 검출 실패 — ApiDocs.java 자동 배포 스킵 (수동으로 추가하세요)`);
+    } else {
+      appendStatus(statusBox, `✓ root 패키지: ${rootPackage}`);
+    }
+  }
+
   for (const file of feature.files) {
+    let sourceContent;
+    let targetPath = file.target;
     appendStatus(statusBox, `→ ${file.source} 읽는 중...`);
-    const source = await getFileContent(
-      ORG,
-      SHARED_WORKFLOWS_REPO,
-      file.source
-    );
-    if (!source) throw new Error(`템플릿 없음: ${file.source}`);
+
+    if (file.transform === "java-package") {
+      if (!rootPackage) continue;
+      const tpl = await getFileContent(ORG, SHARED_WORKFLOWS_REPO, file.source);
+      if (!tpl) throw new Error(`템플릿 없음: ${file.source}`);
+      sourceContent = atob(tpl.content.replace(/\n/g, ""))
+        .replace(/\{\{PACKAGE\}\}/g, rootPackage + ".apidoc");
+      targetPath = file.target.replace(/\{PACKAGE_PATH\}/g, rootPackagePath);
+    } else {
+      const source = await getFileContent(ORG, SHARED_WORKFLOWS_REPO, file.source);
+      if (!source) throw new Error(`템플릿 없음: ${file.source}`);
+      sourceContent = atob(source.content.replace(/\n/g, ""));
+    }
 
     const existing = await getFileContent(
       targetRepo.owner.login,
       targetRepo.name,
-      file.target,
+      targetPath,
       defaultBranch
     );
 
-    appendStatus(statusBox, `✓ 읽음. ${file.target} 커밋 중...`);
-    await putFile(targetRepo.owner.login, targetRepo.name, file.target, {
-      contentB64: source.content.replace(/\n/g, ""),
-      message: `chore: apply ${feature.id} workflow (${file.target.split("/").pop()})`,
+    appendStatus(statusBox, `✓ 읽음. ${targetPath} 커밋 중...`);
+    await putFile(targetRepo.owner.login, targetRepo.name, targetPath, {
+      contentB64: encodeB64(sourceContent),
+      message: `chore: apply ${feature.id} (${targetPath.split("/").pop()})`,
       sha: existing ? existing.sha : undefined,
       branch: defaultBranch,
     });
-    appendStatus(statusBox, `✓ ${file.target}`);
+    appendStatus(statusBox, `✓ ${targetPath}`);
   }
-  appendStatus(statusBox, "워크플로우 파일 적용 완료");
+  appendStatus(statusBox, "파일 적용 완료");
 }

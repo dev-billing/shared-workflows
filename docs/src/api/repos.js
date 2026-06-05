@@ -72,3 +72,13 @@ export async function putFile(owner, repo, path, { contentB64, message, sha, bra
 export async function getRepo(owner, repo) {
   return await ghFetch(`/repos/${owner}/${repo}`);
 }
+
+// 파일 삭제 (Contents API). sha 필수.
+export async function deleteFile(owner, repo, path, { message, sha, branch }) {
+  const body = { message, sha };
+  if (branch) body.branch = branch;
+  return await ghFetch(`/repos/${owner}/${repo}/contents/${path}`, {
+    method: "DELETE",
+    body,
+  });
+}

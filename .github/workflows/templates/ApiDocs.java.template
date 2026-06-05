@@ -1,0 +1,31 @@
+package {{PACKAGE}};
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+/**
+ * REST API Docs 자동화 대상 메서드 표시.
+ *
+ * 이 어노테이션이 붙은 @*Mapping 메서드는 로컬 /api-docs 명령으로 docs/ 디렉토리의
+ * md 파일과 매핑되어 자동 문서화·코드 리뷰 흐름에 포함됩니다.
+ *
+ * <pre>
+ *   {@literal @}ApiDocs(title = "Todo 단건 조회")
+ *   {@literal @}GetMapping("/{id}")
+ *   public TodoResponse getById(...) { ... }
+ * </pre>
+ *
+ * <ul>
+ *   <li>title 있음 → docs/{slugify(title)}.md</li>
+ *   <li>title 없음 → docs/{method}-{slugify(url)}.md</li>
+ * </ul>
+ *
+ * SOURCE retention 이라 컴파일 결과물에 안 남고 런타임 영향 0.
+ */
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.SOURCE)
+public @interface ApiDocs {
+    String title() default "";
+}

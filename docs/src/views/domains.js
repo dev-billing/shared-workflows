@@ -1,12 +1,13 @@
 import { h, mount, clear } from "../utils/dom.js";
 import { toast } from "../utils/toast.js";
 import {
-  readServiceConfig,
-  setServiceEntry,
-  deleteServiceEntry,
-  parseGatewayYml,
-  invalidateServiceConfigCache,
-} from "../api/service-config.js";
+  readMeta,
+  writeMeta,
+  invalidateMetaCache,
+} from "../api/meta-yml.js";
+import { parseGatewayYml } from "../api/service-config.js";
+import { deleteFile, getFileContent, getRepo } from "../api/repos.js";
+import { ORG } from "../config.js";
 import { readRepoList } from "../api/repo-list.js";
 import { loadMatrix } from "../api/applied.js";
 import { applyFeatureToRepo } from "./apply-modal.js";
@@ -29,7 +30,7 @@ export async function renderDomains(root, selected /* optional serviceName */) {
       class: "btn btn--small",
       title: "새로고침 (캐시 비우고 다시 로드)",
       onclick: () => {
-        invalidateServiceConfigCache();
+        invalidateMetaCache();
         load(true);
       },
     },
@@ -48,17 +49,33 @@ export async function renderDomains(root, selected /* optional serviceName */) {
         h("span", { class: "spinner" }), " 로딩 중...")
     );
     try {
-      const [r, rl, matrix] = await Promise.all([
-        readServiceConfig(),
+      const [rl, matrix] = await Promise.all([
         readRepoList(),
         loadMatrix(force).catch(() => []),
       ]);
-      json = r.json || {};
-      repoList = rl.list;
+      repoList = rl.list || [];
       matrixByName = {};
       for (const row of matrix || []) {
         if (row && row.repo) matrixByName[row.repo.name] = row;
       }
+      // 각 repo 의 docs/_meta.yml 을 병렬 fetch
+      json = {};
+      const fetches = repoList.map(async (repoName) => {
+        try {
+          const r = await readMeta(repoName);
+          // meta 가 있고 적용 상태이면 등록 (없으면 기본값으로 비어있음)
+          if (r.exists) {
+            json[repoName] = r.meta;
+          } else {
+            // 워크플로우는 적용됐는데 _meta.yml 이 아직 없을 수 있음 — 빈 entry 로 들어가게 둠
+            json[repoName] = r.meta; // empty meta
+          }
+        } catch (e) {
+          // 404 등은 readMeta 가 이미 흡수. 그래도 안전망.
+          json[repoName] = { environments: {}, useGateway: false, gateway: [], groups: [] };
+        }
+      });
+      await Promise.all(fetches);
       renderSidebar();
       renderDetail();
     } catch (err) {
@@ -399,11 +416,7 @@ export async function renderDomains(root, selected /* optional serviceName */) {
       saveBtn.disabled = true;
       saveBtn.textContent = "저장 중...";
       try {
-        if (configChanged) {
-          await setServiceEntry(name, newEntry);
-          json[name] = newEntry;
-        }
-        // rest-api-docs 미적용이면 자동 적용 (도메인 등록 = 사용 의지 = 활성화)
+        // rest-api-docs 미적용이면 워크플로우 + ApiDocs.java 먼저 적용 (자동 활성화)
         if (willApplyFeature) {
           const feature = FEATURES.find((f) => f.id === REST_API_DOCS_FEATURE_ID);
           const repo = cls.row && cls.row.repo;
@@ -413,10 +426,16 @@ export async function renderDomains(root, selected /* optional serviceName */) {
             toast(`${name} 에 REST API Docs 활성화 완료`, "success");
           } else {
             toast(
-              `service-config 저장은 됐지만 ${name} 레포 정보를 찾지 못해 워크플로우 자동 적용을 건너뛰었습니다. [레포 관리] 에서 확인하세요.`,
+              `${name} 레포 정보를 찾지 못해 워크플로우 자동 적용을 건너뛰었습니다. [레포 관리] 에서 확인하세요.`,
               "error", 6000
             );
           }
+        }
+        if (configChanged) {
+          await writeMeta(name, newEntry, {
+            message: `chore: update docs/_meta.yml for ${name}`,
+          });
+          json[name] = newEntry;
         }
         if (configChanged) toast(`${name} 저장 완료`, "success");
         // 매트릭스 무효화 후 재로드 → 뱃지 갱신
@@ -445,14 +464,29 @@ export async function renderDomains(root, selected /* optional serviceName */) {
     const deleteBtn = h("button", {
       class: "btn btn--danger",
       onclick: async () => {
-        if (!confirm(`서비스 "${name}" 의 도메인 설정을 삭제할까요?`)) return;
+        if (!confirm(`서비스 "${name}" 의 docs/_meta.yml 을 삭제할까요?`)) return;
         try {
-          await deleteServiceEntry(name);
+          // target repo 의 docs/_meta.yml 파일 자체 삭제
+          const meta = await readMeta(name);
+          if (meta.exists && meta.sha) {
+            // default branch 확보
+            let branch;
+            try {
+              const repoMeta = await getRepo(ORG, name);
+              branch = repoMeta.default_branch;
+            } catch (e) { /* fallback to default */ }
+            await deleteFile(ORG, name, "docs/_meta.yml", {
+              message: `chore: remove docs/_meta.yml for ${name}`,
+              sha: meta.sha,
+              branch,
+            });
+            invalidateMetaCache(name);
+          }
           delete json[name];
           selectedName = null;
           renderSidebar();
           renderDetail();
-          toast(`${name} 삭제 완료`, "success");
+          toast(`${name} docs/_meta.yml 삭제 완료`, "success");
         } catch (err) {
           toast(`삭제 실패: ${err.message}`, "error", 5000);
         }
@@ -531,7 +565,9 @@ export async function renderDomains(root, selected /* optional serviceName */) {
         environments: {},
       };
       try {
-        await setServiceEntry(name, entry);
+        await writeMeta(name, entry, {
+          message: `chore: create docs/_meta.yml for ${name}`,
+        });
         json[name] = entry;
         selectedName = name;
         backdrop.remove();
