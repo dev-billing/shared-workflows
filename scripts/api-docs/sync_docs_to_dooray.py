@@ -1,0 +1,268 @@
+#!/usr/bin/env python3
+"""
+sync_docs_to_dooray.py
+
+신규 REST API Docs 흐름의 publish 단계.
+target repo 의 docs/*.md 파일을 Dooray 위키의 published 페이지로 동기화한다.
+
+이전 flow (Dooray Draft → Published) 와 다르게 source 가 repo 의 md 파일이며,
+각 md 의 본문이 그대로 위키 페이지 본문이 된다.
+
+흐름:
+1. {target_repo}/docs/*.md 스캔 (_meta.yml 제외)
+2. 각 md 의 '## API Info' 표에서 Path/Method 추출 → registry 키 구성
+3. 기존 Dooray 페이지가 있으면 update, 없으면 create
+4. registry (shared-workflows 의 api-docs-registry.json) 갱신
+5. registry 변경분 자동 commit & push
+
+환경 변수:
+  DOORAY_API_KEY     Dooray API 토큰
+  REPO_NAME          target 서비스 저장소 이름 (org/repo)
+  TARGET_REPO_PATH   target repo 체크아웃 경로 (워크플로우에서 주입)
+  DOORAY_BASE_URL    (선택) 기본 https://api.dooray.com
+  DRY_RUN            (선택) "true" 면 Dooray 호출 없이 미리보기만
+"""
+
+import os
+import re
+import sys
+
+sys.path.insert(0, os.path.dirname(__file__))
+from lib.api_utils import (
+    normalize_api_key, now_kst_display, now_kst_iso,
+    read_registry, write_registry, set_output, write_summary,
+    registry_path_for, registry_rel_for,
+    get_repo_page_id, set_repo_page_id,
+    parse_domain_table,
+)
+from lib.dooray import (
+    create_page, get_child_pages, update_page,
+)
+from lib.git_utils import git_commit_and_push
+from lib.config import (
+    DOORAY_WIKI_ID, DOORAY_PROJECT_ID,
+    DOORAY_INTERNAL_PARENT_PAGE_ID, DOORAY_EXTERNAL_PARENT_PAGE_ID,
+    DOORAY_DEFAULT_PARENT_PAGE_ID,
+)
+
+
+# ── md 파싱 ─────────────────────────────────────────────────────────────────
+
+_API_INFO_BLOCK_RE = re.compile(
+    r"^## API Info\s*$([\s\S]*?)(?=^##\s|\Z)",
+    re.MULTILINE,
+)
+
+
+def parse_api_info(content: str) -> tuple:
+    """md 본문의 '## API Info' 표에서 (method, path) 추출.
+
+    표 형식 (어느 행 순서든 OK):
+        | 항목 | 값 |
+        | --- | --- |
+        | Path | /external/api/... |
+        | Method | `GET` |
+        | Content-Type | application/json |
+
+    실패 시 (None, None) 반환.
+    """
+    m = _API_INFO_BLOCK_RE.search(content)
+    if not m:
+        return None, None
+    block = m.group(1)
+    path = method = None
+    for line in block.splitlines():
+        line = line.strip()
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip().strip("`") for c in line.strip("|").split("|")]
+        if len(cells) < 2:
+            continue
+        key, val = cells[0], cells[1]
+        if key.lower() == "path":
+            path = val
+        elif key.lower() == "method":
+            method = val
+    return method, path
+
+
+def derive_url_hint(path: str) -> str:
+    """URL path 의 segment 로 사외/사내/내부 분류 추론.
+
+    동일 컨벤션을 새 흐름에서도 유지 (publish 위키 부모 페이지 결정에 사용).
+    """
+    if not path:
+        return "private"
+    p = path.lower()
+    if p.startswith(("/api/", "/open/", "/public/", "/external/")):
+        return "external"
+    if p.startswith(("/internal/", "/admin/", "/inter/", "/system/")):
+        return "internal"
+    if p.startswith(("/private/", "/batch/", "/actuator/")):
+        return "private"
+    # `/api/` 경로지만 versioning 인 경우 등 추가 분기
+    if re.match(r"^/v\d+(\.\d+)?/", p):
+        return "external"
+    return "internal"
+
+
+def parent_page_for(url_hint: str) -> str:
+    if url_hint == "external":
+        return DOORAY_EXTERNAL_PARENT_PAGE_ID or DOORAY_DEFAULT_PARENT_PAGE_ID
+    if url_hint == "internal":
+        return DOORAY_INTERNAL_PARENT_PAGE_ID or DOORAY_DEFAULT_PARENT_PAGE_ID
+    return DOORAY_DEFAULT_PARENT_PAGE_ID
+
+
+def derive_title(content: str, filename: str) -> str:
+    """md 의 H1 이 있으면 우선, 없으면 ## Description 의 첫 bullet, 최후엔 파일명."""
+    m = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
+    if m:
+        return m.group(1).strip()
+    # ## Description 의 첫 줄 fallback
+    m = re.search(r"^##\s+Description\s*\n+\*\s*(.+)$", content, re.MULTILINE)
+    if m:
+        return m.group(1).strip()[:60]
+    return os.path.splitext(os.path.basename(filename))[0]
+
+
+# ── 메인 흐름 ───────────────────────────────────────────────────────────────
+
+def main():
+    dooray_api_key = os.environ.get("DOORAY_API_KEY", "")
+    base_url = os.environ.get("DOORAY_BASE_URL", "https://api.dooray.com")
+    repo_name = os.environ.get("REPO_NAME", "")
+    repo_short = repo_name.split("/")[-1] if repo_name else ""
+    target_repo_path = os.environ.get("TARGET_REPO_PATH", "")
+    dry_run = os.environ.get("DRY_RUN", "").lower() == "true"
+
+    if not repo_short:
+        print("[ERROR] REPO_NAME 환경변수가 없습니다", file=sys.stderr)
+        sys.exit(1)
+    if not target_repo_path:
+        print("[ERROR] TARGET_REPO_PATH 환경변수가 없습니다", file=sys.stderr)
+        sys.exit(1)
+    if not dooray_api_key and not dry_run:
+        print("[ERROR] DOORAY_API_KEY 가 없습니다", file=sys.stderr)
+        sys.exit(1)
+
+    docs_dir = os.path.join(target_repo_path, "docs")
+    if not os.path.isdir(docs_dir):
+        print(f"[INFO] {docs_dir} 디렉토리 없음 — 처리할 md 가 없습니다")
+        return
+
+    md_files = sorted(
+        os.path.join(docs_dir, f) for f in os.listdir(docs_dir)
+        if f.endswith(".md") and not f.startswith("_")
+    )
+    if not md_files:
+        print("[INFO] docs/*.md 파일이 없습니다")
+        return
+
+    registry_path = registry_path_for(repo_short)
+    registry = read_registry(registry_path)
+
+    created = []
+    updated = []
+    skipped = []
+    errors = []
+
+    for md_path in md_files:
+        try:
+            with open(md_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            method, path = parse_api_info(content)
+            if not method or not path:
+                skipped.append((md_path, "API Info 표에서 Method/Path 추출 실패"))
+                continue
+
+            api_key = normalize_api_key(method, path)
+            url_hint = derive_url_hint(path)
+            title = derive_title(content, md_path)
+            parent_id = parent_page_for(url_hint)
+
+            # 기존 등록된 페이지가 있나?
+            entry = registry.get(api_key) or {}
+            page_id = entry.get("page_id")
+
+            # 본문에 H1 이 없으면 자동 주입 (Dooray 페이지 제목과 별개로 본문 상단 시각화)
+            body = content
+            scope_label = {"external": "사외", "internal": "사내", "private": "내부"}.get(url_hint, "내부")
+            if not re.match(r"^#\s+", content):
+                body = f"# [{scope_label}] {title}\n\n{content}"
+
+            if dry_run:
+                action = "UPDATE" if page_id else "CREATE"
+                print(f"[DRY-RUN] {action} {api_key} → parent={parent_id} title={title!r}")
+                if page_id:
+                    updated.append((api_key, page_id, title))
+                else:
+                    created.append((api_key, None, title))
+                continue
+
+            full_title = f"[{scope_label}] {title}"
+            if page_id:
+                update_page(dooray_api_key, DOORAY_WIKI_ID, page_id, full_title, body, base_url)
+                print(f"[INFO] UPDATE {api_key} (page_id={page_id})")
+                updated.append((api_key, page_id, title))
+            else:
+                new_id = create_page(
+                    dooray_api_key, DOORAY_WIKI_ID, parent_id, full_title, body, base_url,
+                )
+                print(f"[INFO] CREATE {api_key} → page_id={new_id}")
+                created.append((api_key, new_id, title))
+                page_id = new_id
+
+            registry[api_key] = {
+                **entry,
+                "status": "published",
+                "title": title,
+                "url_hint": url_hint,
+                "page_id": page_id,
+                "md_path": os.path.relpath(md_path, target_repo_path),
+                "last_synced_at": now_kst_iso(),
+                "updated_at": now_kst_iso(),
+            }
+        except Exception as e:
+            errors.append((md_path, str(e)))
+            print(f"[ERROR] {md_path}: {e}", file=sys.stderr)
+
+    if not dry_run:
+        write_registry(registry_path, registry)
+        git_commit_and_push(
+            files=[registry_path],
+            message=f"chore: sync api docs to dooray - {repo_short} [skip ci]",
+        )
+
+    # 요약
+    summary = [
+        f"# REST API Docs sync — {repo_short}",
+        "",
+        f"- 생성: {len(created)}",
+        f"- 갱신: {len(updated)}",
+        f"- 스킵: {len(skipped)}",
+        f"- 오류: {len(errors)}",
+        f"- 처리 시각: {now_kst_display()}",
+    ]
+    if created:
+        summary.append("\n## 생성된 페이지")
+        for api_key, page_id, title in created:
+            summary.append(f"- {api_key} → {page_id} ({title})")
+    if updated:
+        summary.append("\n## 갱신된 페이지")
+        for api_key, page_id, title in updated:
+            summary.append(f"- {api_key} → {page_id} ({title})")
+    if skipped:
+        summary.append("\n## 스킵")
+        for md, reason in skipped:
+            summary.append(f"- {md}: {reason}")
+    if errors:
+        summary.append("\n## 오류")
+        for md, msg in errors:
+            summary.append(f"- {md}: {msg}")
+    write_summary(summary)
+
+
+if __name__ == "__main__":
+    main()

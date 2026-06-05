@@ -1,41 +1,42 @@
 name: API Doc - PR
 
+# 신규 REST API Docs 흐름.
+# - PR open/synchronize: 자동 draft 생성 안 함 (개발자가 로컬 /api-docs 로 생성)
+# - PR merge to develop: docs/*.md 를 Dooray 페이지로 동기화 (sync_docs_to_dooray.py)
+# - PR close (미merge): 별도 정리 작업 없음 (md 는 PR 머지 안 됐으면 어차피 develop 에 없음)
+
 on:
   pull_request:
-    types: [opened, reopened, closed]
+    types: [closed]
     branches:
       - develop
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dooray 호출 없이 미리보기만"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: api-docs-publish-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
-  # ── PR open/reopen: 변경된 API draft 초안 생성 ───────────────────────────
-  generate-pr-drafts:
-    name: Generate PR API Doc Drafts
-    if: github.event.action == 'opened' || github.event.action == 'reopened'
-    uses: dev-billing/shared-workflows/.github/workflows/reusable-generate-pr-drafts.yml@main
+  sync-on-merge:
+    name: Sync docs/*.md to Dooray (on merge)
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+    uses: dev-billing/shared-workflows/.github/workflows/reusable-sync-docs-to-dooray.yml@main
     with:
-      pr_number: ${{ github.event.pull_request.number }}
       repo_name: ${{ github.repository }}
-      mode: "draft"
+      dry_run: false
     secrets: inherit
 
-  # ── PR merge: 최종 코드 기준 draft 최신화 + publish + deprecated 처리 ─────
-  handle-on-merge:
-    name: Publish API Docs on Merge
-    if: github.event.action == 'closed' && github.event.pull_request.merged == true
-    uses: dev-billing/shared-workflows/.github/workflows/reusable-generate-pr-drafts.yml@main
+  sync-manual:
+    name: Sync docs/*.md to Dooray (manual)
+    if: github.event_name == 'workflow_dispatch'
+    uses: dev-billing/shared-workflows/.github/workflows/reusable-sync-docs-to-dooray.yml@main
     with:
-      pr_number: ${{ github.event.pull_request.number }}
       repo_name: ${{ github.repository }}
-      mode: "all"
-    secrets: inherit
-
-  # ── PR close (미merge): draft 삭제 ────────────────────────────────────────
-  cleanup-on-close:
-    name: Cleanup Drafts on Close
-    if: github.event.action == 'closed' && github.event.pull_request.merged == false
-    uses: dev-billing/shared-workflows/.github/workflows/reusable-generate-pr-drafts.yml@main
-    with:
-      pr_number: ${{ github.event.pull_request.number }}
-      repo_name: ${{ github.repository }}
-      mode: "delete_draft"
+      dry_run: ${{ inputs.dry_run }}
     secrets: inherit

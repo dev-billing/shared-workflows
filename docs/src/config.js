@@ -45,22 +45,17 @@ export const FEATURES = [
         source: ".github/workflows/templates/api-doc-pr.yml",
         target: ".github/workflows/api-doc-pr.yml",
       },
-      {
-        source: ".github/workflows/templates/api-doc-publish.yml",
-        target: ".github/workflows/api-doc-publish.yml",
-      },
-      {
-        source: ".github/workflows/templates/api-doc-create-draft.yml",
-        target: ".github/workflows/api-doc-create-draft.yml",
-      },
     ],
     manualWorkflows: [
-      { file: "api-doc-publish.yml", label: "Publish" },
-      { file: "api-doc-create-draft.yml", label: "Create Draft" },
+      { file: "api-doc-pr.yml", label: "Publish (manual)" },
     ],
-    // 적용 시 추가로 입력받을 정보. 'service-config' 타입은 shared-workflows 의
-    // rest-api-docs/service-config.json 에 환경별 URL 을 등록한다.
-    extraSetup: "service-config",
+    // 신규 흐름:
+    //  - 어노테이션: @ApiDocs (target repo 가 직접 정의)
+    //  - 문서: target repo 의 docs/*.md (로컬 /api-docs 명령으로 생성·수정)
+    //  - 메타: target repo 의 docs/_meta.yml (도메인·게이트웨이·그룹)
+    //  - 트리거: PR merge → docs/*.md → Dooray 페이지 동기화
+    //  shared-workflows 의 service-config.json 은 더 이상 사용 안 함.
+    extraSetup: "none",
   },
   {
     id: "ai-context-sync",
@@ -99,12 +94,24 @@ export const CONTEXT_AI_DIR = "ai-context";
 export const SYNC_WORKFLOW_FILE = "sync-ai-context.yml";
 export const SYNC_WORKFLOW_REF = "main";
 
-// 기대되는 ai-context 파일 (전체 생성 시)
-export const AI_CONTEXT_EXPECTED_FILES = [
+// ai-context 파일 분류
+//   - REQUIRED : 모든 서비스에 항상 생성되어야 하는 필수 파일 (카운트 기준)
+//   - OPTIONAL : 조건부 생성 — 서비스 특성에 따라 생성 안 될 수 있음
+//                (관리페이지에서 누락인지 해당없음인지 구분 불가하므로 카운트에서 제외)
+export const AI_CONTEXT_REQUIRED_FILES = [
   "domain-overview.md",
   "data-model.md",
-  "api-spec.json",
-  "job-spec.json",
-  "kafka-spec.json",
-  "external-integration.md",
+];
+
+export const AI_CONTEXT_OPTIONAL_FILES = [
+  "api-spec.json",            // Controller 있는 경우
+  "job-spec.json",            // Spring Batch 있는 경우
+  "kafka-spec.json",          // Kafka/RabbitMQ 있는 경우
+  "external-integration.md",  // 외부 API/Redis/S3 등 있는 경우
+];
+
+// 하위호환: 기존 임포터를 위해 합본도 export
+export const AI_CONTEXT_EXPECTED_FILES = [
+  ...AI_CONTEXT_REQUIRED_FILES,
+  ...AI_CONTEXT_OPTIONAL_FILES,
 ];

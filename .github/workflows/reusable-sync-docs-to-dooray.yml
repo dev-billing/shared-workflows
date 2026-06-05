@@ -1,0 +1,68 @@
+name: Reusable - Sync API Docs to Dooray
+
+# 신규 REST API Docs 흐름의 publish 단계.
+# target repo 의 docs/*.md 를 Dooray 위키 페이지로 동기화.
+
+on:
+  workflow_call:
+    inputs:
+      repo_name:
+        required: true
+        type: string
+        description: "서비스 저장소 이름 (org/repo)"
+      dry_run:
+        required: false
+        type: boolean
+        default: false
+        description: "true 면 Dooray 호출 없이 미리보기만"
+    secrets:
+      CODE_REVIEW_APP_ID:
+        required: true
+      CODE_REVIEW_APP_PRIVATE_KEY:
+        required: true
+      DOORAY_API_KEY:
+        required: true
+
+jobs:
+  sync:
+    runs-on:
+      group: billing-dev
+
+    steps:
+      - name: Clean workspace
+        run: find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.CODE_REVIEW_APP_ID }}
+          private-key: ${{ secrets.CODE_REVIEW_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout target repo (docs/*.md 읽기용)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo_name }}
+          token: ${{ steps.app-token.outputs.token }}
+          path: target-repo
+
+      - name: Checkout shared-workflows (스크립트 + registry)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/shared-workflows
+          token: ${{ steps.app-token.outputs.token }}
+          path: shared-config
+
+      - name: Sync docs/*.md to Dooray wiki
+        env:
+          DOORAY_API_KEY: ${{ secrets.DOORAY_API_KEY }}
+          ORG_GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO_NAME: ${{ inputs.repo_name }}
+          TARGET_REPO_PATH: ${{ github.workspace }}/target-repo
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: python3 shared-config/scripts/api-docs/sync_docs_to_dooray.py
+
+      - name: Cleanup workspace
+        if: always()
+        run: find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
