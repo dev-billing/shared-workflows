@@ -10,7 +10,7 @@ import { deleteFile, getFileContent, getRepo } from "../api/repos.js";
 import { ORG } from "../config.js";
 import { readRepoList } from "../api/repo-list.js";
 import { loadMatrix } from "../api/applied.js";
-import { applyFeatureToRepo } from "./apply-modal.js";
+import { applyFeatureToRepo, resolveTargetBranch } from "./apply-modal.js";
 import { FEATURES } from "../config.js";
 import { buildEnvForm } from "../utils/env-form.js";
 
@@ -432,8 +432,10 @@ export async function renderDomains(root, selected /* optional serviceName */) {
           }
         }
         if (configChanged) {
+          const targetBranch = await resolveTargetBranch(ORG, name);
           await writeMeta(name, newEntry, {
             message: `chore: update docs/_meta.yml for ${name}`,
+            branch: targetBranch,
           });
           json[name] = newEntry;
         }
@@ -469,12 +471,7 @@ export async function renderDomains(root, selected /* optional serviceName */) {
           // target repo 의 docs/_meta.yml 파일 자체 삭제
           const meta = await readMeta(name);
           if (meta.exists && meta.sha) {
-            // default branch 확보
-            let branch;
-            try {
-              const repoMeta = await getRepo(ORG, name);
-              branch = repoMeta.default_branch;
-            } catch (e) { /* fallback to default */ }
+            const branch = await resolveTargetBranch(ORG, name);
             await deleteFile(ORG, name, "docs/_meta.yml", {
               message: `chore: remove docs/_meta.yml for ${name}`,
               sha: meta.sha,
@@ -565,8 +562,10 @@ export async function renderDomains(root, selected /* optional serviceName */) {
         environments: {},
       };
       try {
+        const targetBranch = await resolveTargetBranch(ORG, name);
         await writeMeta(name, entry, {
           message: `chore: create docs/_meta.yml for ${name}`,
+          branch: targetBranch,
         });
         json[name] = entry;
         selectedName = name;

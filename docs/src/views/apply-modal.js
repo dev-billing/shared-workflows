@@ -1,6 +1,19 @@
 import { h, mount, clear } from "../utils/dom.js";
 import { getFileContent, putFile, getRepo } from "../api/repos.js";
 import { ghFetch } from "../api/github.js";
+
+// 모든 적용·갱신은 develop 브랜치를 우선 사용. 없으면 default_branch (main/master) fallback.
+export async function resolveTargetBranch(owner, repoName, repoMeta) {
+  // develop 존재 확인 — 404 면 fallback
+  try {
+    const branchInfo = await ghFetch(`/repos/${owner}/${repoName}/branches/develop`)
+      .catch(() => null);
+    if (branchInfo && branchInfo.name) return "develop";
+  } catch (e) { /* fall through */ }
+  if (repoMeta && repoMeta.default_branch) return repoMeta.default_branch;
+  const meta = await getRepo(owner, repoName);
+  return meta.default_branch;
+}
 import { ORG, SHARED_WORKFLOWS_REPO } from "../config.js";
 import { readMeta, writeMeta } from "../api/meta-yml.js";
 import { toast } from "../utils/toast.js";
@@ -98,6 +111,11 @@ export function openApplyModal(feature, targetRepo, onDone) {
       if (needsMetaYml) {
         const environments = envForm.getValues();
         appendStatus(statusBox, `→ docs/_meta.yml 작성 중...`);
+        const targetBranch = await resolveTargetBranch(
+          targetRepo.owner.login,
+          targetRepo.name,
+          targetRepo
+        );
         await writeMeta(targetRepo.name, {
           environments,
           useGateway: false,
@@ -105,6 +123,7 @@ export function openApplyModal(feature, targetRepo, onDone) {
           groups: [],
         }, {
           message: `chore: create docs/_meta.yml for ${targetRepo.name}`,
+          branch: targetBranch,
         });
         appendStatus(statusBox, `✓ docs/_meta.yml 작성 완료`);
       }
@@ -134,7 +153,7 @@ export function openApplyModal(feature, targetRepo, onDone) {
           "p",
           null,
           h("strong", null, `${ORG}/${targetRepo.name}`),
-          " 의 default branch에 다음 파일을 추가합니다:"
+          " 의 develop 브랜치 (없으면 default branch) 에 다음 파일을 추가합니다:"
         ),
         fileList,
         h(
@@ -154,11 +173,11 @@ export function openApplyModal(feature, targetRepo, onDone) {
 
 // ── 모달 없이 단일 레포에 적용 (deploy view 일괄 적용용) ──
 export async function applyFeatureToRepo(feature, targetRepo) {
-  let defaultBranch = targetRepo.default_branch;
-  if (!defaultBranch) {
-    const meta = await getRepo(targetRepo.owner.login, targetRepo.name);
-    defaultBranch = meta.default_branch;
-  }
+  const defaultBranch = await resolveTargetBranch(
+    targetRepo.owner.login,
+    targetRepo.name,
+    targetRepo
+  );
   // ApiDocs.java 같은 placeholder 치환이 필요한 파일에 미리 root 패키지 검출
   const needsPackage = feature.files.some((f) => f.transform === "java-package");
   let rootPackage = null;
@@ -255,11 +274,12 @@ function appendStatus(box, msg) {
 }
 
 async function applyFeature(feature, targetRepo, statusBox) {
-  let defaultBranch = targetRepo.default_branch;
-  if (!defaultBranch) {
-    const meta = await getRepo(targetRepo.owner.login, targetRepo.name);
-    defaultBranch = meta.default_branch;
-  }
+  const defaultBranch = await resolveTargetBranch(
+    targetRepo.owner.login,
+    targetRepo.name,
+    targetRepo
+  );
+  appendStatus(statusBox, `→ 대상 브랜치: ${defaultBranch}`);
 
   // placeholder 치환이 필요한 파일이 있으면 root 패키지 먼저 검출
   const needsPackage = feature.files.some((f) => f.transform === "java-package");
