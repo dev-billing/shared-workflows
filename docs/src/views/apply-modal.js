@@ -2,17 +2,21 @@ import { h, mount, clear } from "../utils/dom.js";
 import { getFileContent, putFile, getRepo } from "../api/repos.js";
 import { ghFetch } from "../api/github.js";
 
-// 모든 적용·갱신은 develop 브랜치를 우선 사용. 없으면 default_branch (main/master) fallback.
-export async function resolveTargetBranch(owner, repoName, repoMeta) {
-  // develop 존재 확인 — 404 면 fallback
-  try {
-    const branchInfo = await ghFetch(`/repos/${owner}/${repoName}/branches/develop`)
-      .catch(() => null);
-    if (branchInfo && branchInfo.name) return "develop";
-  } catch (e) { /* fall through */ }
-  if (repoMeta && repoMeta.default_branch) return repoMeta.default_branch;
-  const meta = await getRepo(owner, repoName);
-  return meta.default_branch;
+// 모든 적용·갱신은 develop 브랜치 기준. develop 없으면 명시적으로 에러
+// (main 으로 silent fallback 하면 의도와 다른 브랜치에 들어가서 혼란만 커짐).
+export async function resolveTargetBranch(owner, repoName, _repoMeta) {
+  // develop 존재 확인 — 404 면 명시 에러
+  const branchInfo = await ghFetch(
+    `/repos/${owner}/${repoName}/branches/develop`,
+    { allow404: true }
+  );
+  if (branchInfo && branchInfo.name === "develop") {
+    return "develop";
+  }
+  throw new Error(
+    `${owner}/${repoName} 에 develop 브랜치가 없습니다. ` +
+    `먼저 develop 브랜치를 만들어주세요.`
+  );
 }
 import { ORG, SHARED_WORKFLOWS_REPO } from "../config.js";
 import { readMeta, writeMeta } from "../api/meta-yml.js";
