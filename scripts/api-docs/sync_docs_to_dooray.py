@@ -37,6 +37,7 @@ from lib.api_utils import (
 )
 from lib.dooray import (
     create_page, get_child_pages, update_page, delete_page,
+    get_or_create_child_page,
 )
 from lib.git_utils import git_commit_and_push
 from lib.config import (
@@ -119,12 +120,38 @@ def derive_url_hint(path: str) -> str:
     return "internal"
 
 
-def parent_page_for(url_hint: str) -> str:
+def scope_parent_page(url_hint: str) -> str:
+    """scope (external/internal/private) 의 최상위 부모 페이지 id."""
     if url_hint == "external":
         return DOORAY_EXTERNAL_PARENT_PAGE_ID or DOORAY_DEFAULT_PARENT_PAGE_ID
     if url_hint == "internal":
         return DOORAY_INTERNAL_PARENT_PAGE_ID or DOORAY_DEFAULT_PARENT_PAGE_ID
     return DOORAY_DEFAULT_PARENT_PAGE_ID
+
+
+# (scope, repo_short) → service-level 부모 page_id 캐시 (1 run 내 재사용)
+_SERVICE_PARENT_CACHE = {}
+
+
+def resolve_service_parent(api_key: str, wiki_id: str, url_hint: str,
+                            repo_short: str, base_url: str) -> str:
+    """scope 부모 아래에 서비스 이름(repo_short) 페이지를 찾거나 만들고 그 id 를 반환.
+
+    구조:
+        사외 (scope parent)
+        └─ todo-service     ← 이 페이지를 service-level 부모로 사용
+           ├─ Todo 단건 조회
+           └─ ...
+    """
+    scope_parent = scope_parent_page(url_hint)
+    cache_key = (url_hint, repo_short)
+    if cache_key in _SERVICE_PARENT_CACHE:
+        return _SERVICE_PARENT_CACHE[cache_key]
+    service_parent = get_or_create_child_page(
+        api_key, wiki_id, scope_parent, repo_short, base_url,
+    )
+    _SERVICE_PARENT_CACHE[cache_key] = service_parent
+    return service_parent
 
 
 def derive_title(content: str, filename: str) -> str:
@@ -317,7 +344,13 @@ def main():
             # scope 우선순위: md 의 <!-- scope: ... --> 주석 (사용자 명시) → URL prefix 추론
             url_hint = parse_scope_hint(content) or derive_url_hint(path)
             title = derive_title(content, md_path)
-            parent_id = parent_page_for(url_hint)
+            # 구조: scope 부모 → 서비스명(repo_short) → API 페이지
+            if dry_run:
+                parent_id = f"<service:{url_hint}/{repo_short}>"
+            else:
+                parent_id = resolve_service_parent(
+                    dooray_api_key, DOORAY_WIKI_ID, url_hint, repo_short, base_url,
+                )
 
             # 기존 등록된 페이지가 있나?
             entry = registry.get(api_key) or {}
