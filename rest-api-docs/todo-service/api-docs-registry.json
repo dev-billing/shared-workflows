@@ -1,0 +1,38 @@
+{
+  "GET /external/api/todo-list/statistics": {
+    "status": "published",
+    "title": "Todo 상태별 통계 조회",
+    "url_hint": "external",
+    "page_id": "4350311251679985950",
+    "md_path": "docs/get-external-api-todo-list-statistics.md",
+    "last_synced_at": "2026-06-08T15:51:53+09:00",
+    "updated_at": "2026-06-08T15:51:53+09:00"
+  },
+  "GET /external/api/todo-list/{id}": {
+    "status": "published",
+    "title": "Todo 단건 조회",
+    "url_hint": "external",
+    "page_id": "4350311253441844737",
+    "md_path": "docs/todo-단건-조회.md",
+    "last_synced_at": "2026-06-08T15:51:53+09:00",
+    "updated_at": "2026-06-08T15:51:53+09:00"
+  },
+  "GET /external/api/todo-list/debug/info": {
+    "status": "published",
+    "title": "Todo 디버그 정보",
+    "url_hint": "private",
+    "page_id": "4350311255616884607",
+    "md_path": "docs/todo-디버그-정보.md",
+    "last_synced_at": "2026-06-08T15:51:54+09:00",
+    "updated_at": "2026-06-08T15:51:54+09:00"
+  },
+  "POST /external/api/todo-list/create": {
+    "status": "published",
+    "title": "Todo 생성",
+    "url_hint": "external",
+    "page_id": "4350311258619571892",
+    "md_path": "docs/todo-생성.md",
+    "last_synced_at": "2026-06-08T15:51:54+09:00",
+    "updated_at": "2026-06-08T15:51:54+09:00"
+  }
+}
