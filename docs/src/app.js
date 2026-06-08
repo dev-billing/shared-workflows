@@ -46,53 +46,59 @@ async function navigate() {
   }
 
   if (hash === "#/login") {
-    location.hash = "#/overview";
+    location.hash = "#/repos";
     return;
   }
 
   renderNavSidebar(navSidebar, hash);
 
-  // 레포 관리
+  // 레포 관리 (default landing)
   if (hash === "#/repos") return renderRepos(root);
   const repoMatch = hash.match(/^#\/repos\/([^/]+)$/);
   if (repoMatch) return renderRepos(root, decodeURIComponent(repoMatch[1]));
 
-  // 적용 현황
+  // (구) 적용 현황 — 사이드바에서 빠졌지만 URL 직접 입력 시는 동작 유지
   if (hash === "#/overview") return renderOverview(root);
 
-  // 기능 배포
+  // (구) 기능 배포 — 사이드바에서 빠졌지만 URL 직접 입력 시는 동작 유지
   if (hash === "#/deploy") return renderDeploy(root);
   const deployMatch = hash.match(/^#\/deploy\/([^/]+)$/);
   if (deployMatch) return renderDeploy(root, decodeURIComponent(deployMatch[1]));
 
-  // 도메인 관리
+  // REST API Docs > 도메인 관리
   if (hash === "#/domains" || hash.startsWith("#/domains/")) {
     const { renderDomains } = await import("./views/domains.js");
     const m = hash.match(/^#\/domains\/([^/]+)$/);
     return renderDomains(root, m ? decodeURIComponent(m[1]) : null);
   }
 
-  // AI Context 동기화 상태
-  if (hash === "#/ai-context") {
-    const { renderAiContext } = await import("./views/ai-context.js");
-    return renderAiContext(root);
+  // REST API Docs > Docs 관리 (picker)
+  if (hash === "#/api-docs") {
+    const { renderApiDocsPicker } = await import("./views/api-docs-picker.js");
+    return renderApiDocsPicker(root);
   }
-
-  // 디테일 화면 (사이드바 뷰에서 진입)
   const apiDocsMatch = hash.match(/^#\/api-docs\/([^/]+)$/);
   if (apiDocsMatch) {
     const { renderApiDocs } = await import("./views/api-docs.js");
     return renderApiDocs(root, decodeURIComponent(apiDocsMatch[1]));
   }
+
+  // MCP > AI Context
+  if (hash === "#/ai-context") {
+    const { renderAiContext } = await import("./views/ai-context.js");
+    return renderAiContext(root);
+  }
+
+  // 디테일 화면
   const runsMatch = hash.match(/^#\/runs\/([^/]+)$/);
   if (runsMatch) {
     const { renderRuns } = await import("./views/runs.js");
     return renderRuns(root, decodeURIComponent(runsMatch[1]));
   }
 
-  // 기본 (또는 #/matrix 등 구 라우트)
+  // 기본 (또는 구 라우트)
   if (hash === "#/matrix" || hash === "#/") {
-    location.hash = "#/overview";
+    location.hash = "#/repos";
     return;
   }
 

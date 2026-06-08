@@ -20,7 +20,7 @@ export async function renderApiDocs(root, repoName) {
     h(
       "div",
       { class: "card" },
-      h("a", { class: "back-link", href: "#/overview" }, "← 적용 현황"),
+      h("a", { class: "back-link", href: "#/api-docs" }, "← Docs 관리"),
       h("h2", { class: "card__title" }, `${repoName} — API Docs`),
       h("p", { class: "card__desc" }, h("span", { class: "spinner" }), " 데이터 로딩 중...")
     )
@@ -112,7 +112,7 @@ export async function renderApiDocs(root, repoName) {
     h(
       "div",
       { class: "card" },
-      h("a", { class: "back-link", href: "#/overview" }, "← 적용 현황"),
+      h("a", { class: "back-link", href: "#/api-docs" }, "← Docs 관리"),
       h(
         "div",
         { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" } },
