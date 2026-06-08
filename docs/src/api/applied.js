@@ -8,13 +8,24 @@ const CACHE_TTL_MS = 60_000;
 
 // 한 레포의 워크플로우 파일 set으로부터 feature 상태 계산
 // returns { [featureId]: "applied" | "partial" | "missing" }
+//
+// .github/workflows/ 안의 파일만 검사 대상으로 본다 — 워크플로우 외의 파일
+// (예: ApiDocs.java, _meta.yml) 은 적용 시 워크플로우와 함께 배포되므로
+// 워크플로우 존재 = feature 적용으로 간주.
 export function computeStatus(workflowFiles) {
   const status = {};
   for (const feat of FEATURES) {
-    const required = feat.files.map((f) => f.target.split("/").pop());
-    const present = required.filter((n) => workflowFiles.has(n)).length;
+    const wfTargets = feat.files
+      .filter((f) => f.target.startsWith(".github/workflows/"))
+      .map((f) => f.target.split("/").pop());
+    if (wfTargets.length === 0) {
+      // 워크플로우 파일이 정의되지 않은 feature → 검사할 게 없음 → 항상 missing 으로 안전 처리
+      status[feat.id] = "missing";
+      continue;
+    }
+    const present = wfTargets.filter((n) => workflowFiles.has(n)).length;
     if (present === 0) status[feat.id] = "missing";
-    else if (present === required.length) status[feat.id] = "applied";
+    else if (present === wfTargets.length) status[feat.id] = "applied";
     else status[feat.id] = "partial";
   }
   return status;
