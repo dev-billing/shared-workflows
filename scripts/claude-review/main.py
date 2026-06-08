@@ -277,7 +277,16 @@ def analyze_diff(diff: str) -> DiffAnalysis:
                 file_type = EXTENSION_TO_FILE_TYPE.get(ext)
                 if file_type:
                     file_types.add(file_type)
-                include_file = ext in ALL_REVIEWABLE_EXTENSIONS
+                # docs/*.md 는 REST API Docs 흐름의 산출물이라 리뷰 대상에 포함
+                # (다른 *.md 는 일반 문서로 보고 제외)
+                is_api_doc_md = (
+                    ext == ".md"
+                    and (file_path.startswith("docs/") or "/docs/" in file_path)
+                    and not os.path.basename(file_path).startswith("_")
+                )
+                if is_api_doc_md:
+                    file_types.add("api-doc-md")
+                include_file = (ext in ALL_REVIEWABLE_EXTENSIONS) or is_api_doc_md
             else:
                 include_file = False
         if include_file:
@@ -411,10 +420,11 @@ def resolve_skill_names(repo_config: str, file_types: Set[str]) -> List[str]:
         if skill_names:
             print(f"[INFO] Skills 로드: repo 설정 없음 → 확장자 기반 자동 선택 {skill_names}")
 
-    # 공통 부가 skill — Java 파일이 변경됐으면 항상 @ApiDocs 커버리지 점검 동봉
-    if "java" in file_types and "api-docs-coverage" not in skill_names:
+    # 공통 부가 skill — Java 또는 docs/*.md 변경 감지 시 @ApiDocs 커버리지 점검
+    if (("java" in file_types) or ("api-doc-md" in file_types)) \
+            and "api-docs-coverage" not in skill_names:
         skill_names.append("api-docs-coverage")
-        print("[INFO] Skills 로드: Java 변경 감지 → api-docs-coverage 추가")
+        print("[INFO] Skills 로드: Java/docs-md 변경 감지 → api-docs-coverage 추가")
 
     if not skill_names:
         print("[INFO] Skills 로드: 매핑되는 기본 skill 없음")

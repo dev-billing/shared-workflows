@@ -62,12 +62,36 @@ title 이 바뀌면 파일명도 바뀌어야 (`{slugify(title)}.md`). PR 에 �
 > 새 파일명으로 rename 했는지 확인해주세요. rename 안 하면 publish 시
 > 새 Dooray 페이지가 만들어지고 이전 페이지가 고아가 됩니다.
 
+## docs/*.md 가 PR 에 포함된 경우 — md 자체 검토
+
+일반 `*.md` 는 리뷰 대상 아니지만 `docs/*.md` (REST API Docs 산출물) 는 리뷰에 포함된다. 대응되는 Java 의 `@ApiDocs` 메서드와 정합성 확인:
+
+### 점검 포인트
+
+1. **md 의 `## API Info` Method/Path 가 매칭되는 `@ApiDocs` 메서드와 일치?**
+   - 다르면 → "이 md 가 실제 어떤 endpoint 인지 불분명. Path/Method 재확인"
+2. **md 의 `### Parameters`/`### Body` 가 실제 시그니처와 일치?**
+   - 실제 `@RequestParam` 보다 표가 모자라거나 더 많으면 지적
+   - 필수여부(`Y`/`N`) 가 어노테이션의 `required` 와 다르면 지적
+3. **md 의 Domain 표가 `_meta.yml` 과 충돌하는지**
+   - URL 셀이 비어있는데 `_meta.yml` 에는 값이 있으면 → "/api-docs 다시 돌리면 자동으로 채워집니다" 안내
+4. **md 첫 줄 `<!-- scope: ... -->` 와 `@ApiDocs(scope=...)` 가 일치?**
+   - 다르면 어느 쪽 진실인지 확인 요청
+5. **md 의 H1 제목이 `@ApiDocs(title=...)` 와 일치?**
+   - 다르면 의도 확인
+
+### 톤
+- md 가 PR 에 새로 들어왔다면 "추가해주셔서 감사합니다" 톤
+- 사소한 불일치는 권유형
+- 비즈니스 설명(`## Description`, `### Example`) 은 사람 영역이므로 내용 정확성은 지적 안 함 (사람이 의도적으로 쓴 것)
+
 ## 점검하지 않는 케이스
 
 - 메서드 body 내부 로직 변경 (`if` 추가, stream 연산 변경 등)
 - private/inner 메서드 변경
 - 단순 import / 주석 / 포매팅 변경
 - 테스트 코드 변경
+- docs/*.md 의 `## Description`, `### Example`, `## ACL` 등 사람 영역 내용 (형식·정합성만 보고 의미 추측 지적은 자제)
 
 ## 파일명 슬러그 규칙 (참고)
 
