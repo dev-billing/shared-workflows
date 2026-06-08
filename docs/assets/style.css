@@ -100,7 +100,7 @@ body {
 }
 
 /* ── App container ────────────────────────────────── */
-.app { flex: 1; max-width: 1280px; padding: 24px; min-width: 0; margin: 0 auto; }
+.app { flex: 1; max-width: 1600px; padding: 24px 32px; min-width: 0; margin: 0 auto; }
 
 /* ── Feature picker (deploy 페이지 상단 선택) ──────── */
 .feature-picker {
