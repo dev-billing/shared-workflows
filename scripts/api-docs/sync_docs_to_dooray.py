@@ -86,10 +86,23 @@ def parse_api_info(content: str) -> tuple:
     return method, path
 
 
+_SCOPE_COMMENT_RE = re.compile(r"<!--\s*scope\s*:\s*(external|internal|private)\s*-->", re.IGNORECASE)
+
+
+def parse_scope_hint(content: str) -> str:
+    """md 상단의 <!-- scope: ... --> 주석에서 명시된 scope 추출. 없으면 None."""
+    if not content:
+        return None
+    m = _SCOPE_COMMENT_RE.search(content)
+    if m:
+        return m.group(1).lower()
+    return None
+
+
 def derive_url_hint(path: str) -> str:
     """URL path 의 segment 로 사외/사내/내부 분류 추론.
 
-    동일 컨벤션을 새 흐름에서도 유지 (publish 위키 부모 페이지 결정에 사용).
+    @ApiDocs(scope=...) 가 md 에 명시되어 있지 않을 때만 사용 (fallback).
     """
     if not path:
         return "private"
@@ -244,7 +257,8 @@ def main():
                 continue
 
             api_key = normalize_api_key(method, path)
-            url_hint = derive_url_hint(path)
+            # scope 우선순위: md 의 <!-- scope: ... --> 주석 (사용자 명시) → URL prefix 추론
+            url_hint = parse_scope_hint(content) or derive_url_hint(path)
             title = derive_title(content, md_path)
             parent_id = parent_page_for(url_hint)
 

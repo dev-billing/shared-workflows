@@ -12,7 +12,7 @@ import java.lang.annotation.Target;
  * md 파일과 매핑되어 자동 문서화·코드 리뷰 흐름에 포함됩니다.
  *
  * <pre>
- *   {@literal @}ApiDocs(title = "Todo 단건 조회")
+ *   {@literal @}ApiDocs(title = "Todo 단건 조회", scope = "external")
  *   {@literal @}GetMapping("/{id}")
  *   public TodoResponse getById(...) { ... }
  * </pre>
@@ -20,7 +20,11 @@ import java.lang.annotation.Target;
  * <ul>
  *   <li>title 있음 → docs/{slugify(title)}.md</li>
  *   <li>title 없음 → docs/{method}-{slugify(url)}.md</li>
+ *   <li>scope 있음 → publish 시 그 분류 (사외/사내/내부) 의 Dooray 부모 페이지로 발행</li>
+ *   <li>scope 없음 → URL 경로 prefix 로 자동 추론 (/external→external, /internal→internal, ...)</li>
  * </ul>
+ *
+ * scope 값: "external" / "internal" / "private"
  *
  * SOURCE retention 이라 컴파일 결과물에 안 남고 런타임 영향 0.
  */
@@ -28,4 +32,5 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.SOURCE)
 public @interface ApiDocs {
     String title() default "";
+    String scope() default "";
 }
