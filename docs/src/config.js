@@ -86,6 +86,12 @@ export const REPO_SORT = "updated";
 // 워크플로우 YAML 을 읽고 실행할 브랜치 (워크플로우 파일이 항상 존재해야 함)
 export const API_DOCS_WORKFLOW_REF = "main";
 
+// Dooray 위키 페이지 URL 생성용. 페이지 ID 가 등록된 API 의 본 페이지 링크를
+// 관리 페이지에서 클릭으로 열 수 있도록 사용한다.
+export const DOORAY_WEB_BASE = "https://nhnent.dooray.com";
+export const DOORAY_WIKI_ID = "3177894566242236062";    // 빌링개발팀 위키
+export const DOORAY_PROJECT_ID = "3177894562408989784"; // 빌링개발팀 프로젝트
+
 // Draft 생성 시 컨트롤러 "소스 코드"를 읽을 기본 브랜치
 export const API_DOCS_CODE_BRANCH_DEFAULT = "main";
 
