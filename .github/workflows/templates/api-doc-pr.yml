@@ -38,5 +38,7 @@ jobs:
     uses: dev-billing/shared-workflows/.github/workflows/reusable-sync-docs-to-dooray.yml@main
     with:
       repo_name: ${{ github.repository }}
-      dry_run: ${{ inputs.dry_run }}
+      # workflow_dispatch input 의 boolean 을 reusable 의 boolean input 으로
+      # 전달 시 GitHub 가 가끔 string 으로 보고 type mismatch 를 내므로 명시
+      dry_run: ${{ inputs.dry_run == true }}
     secrets: inherit

@@ -129,14 +129,14 @@ function parseMeta(text) {
       }
       if (key === "environments") {
         i++;
-        while (i < lines.length && lines[i].startsWith("  ") && !lines[i].startsWith("    ") === false) {
-          if (!lines[i].startsWith("  ") || lines[i].startsWith("- ")) break;
-          if (lines[i].trim() === "") { i++; continue; }
-          const im = lines[i].trim().match(/^([A-Za-z][\w]*)\s*:\s*(.*)$/);
+        // 2-space 들여쓰기 라인을 모두 환경 항목으로 읽고, 들여쓰기 없는 라인이 나오면 종료
+        while (i < lines.length) {
+          const ln = lines[i];
+          if (ln.trim() === "") { i++; continue; }
+          if (!ln.startsWith("  ") || ln.startsWith("- ") || ln.startsWith("    ")) break;
+          const im = ln.trim().match(/^([A-Za-z][\w]*)\s*:\s*(.*)$/);
           if (im) meta.environments[im[1]] = unquote(im[2]);
           i++;
-          // 다음 라인이 들여쓰기 2 라인이 아니면 종료 — 위에서 처리. 안전상 break 조건 강화.
-          if (i < lines.length && !lines[i].startsWith("  ")) break;
         }
         continue;
       }
