@@ -27,6 +27,11 @@ on:
         required: false
         type: string
         default: ""
+      delete_only:
+        description: "true 면 registry + Dooray 페이지만 삭제 (md 파일은 그대로). single_md_path 필수."
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: api-docs-publish-${{ github.repository }}
@@ -55,4 +60,5 @@ jobs:
       dry_run: ${{ inputs.dry_run == true }}
       full_sync: ${{ inputs.full_sync == true }}
       single_md_path: ${{ inputs.single_md_path }}
+      delete_only: ${{ inputs.delete_only == true }}
     secrets: inherit

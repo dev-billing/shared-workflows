@@ -30,6 +30,11 @@ on:
         type: string
         default: ""
         description: "단일 md 파일 경로만 동기화 (예: docs/todo-단건-조회.md). 지정 시 pr_number/full_sync 무시"
+      delete_only:
+        required: false
+        type: boolean
+        default: false
+        description: "true 면 registry + Dooray 페이지만 삭제 (md 파일은 건드리지 않음). single_md_path 필수"
     secrets:
       CODE_REVIEW_APP_ID:
         required: true
@@ -81,6 +86,7 @@ jobs:
           PR_NUMBER: ${{ inputs.pr_number }}
           FULL_SYNC: ${{ inputs.full_sync }}
           SINGLE_MD_PATH: ${{ inputs.single_md_path }}
+          DELETE_ONLY: ${{ inputs.delete_only }}
         run: python3 shared-config/scripts/api-docs/sync_docs_to_dooray.py
 
       - name: Cleanup workspace

@@ -62,10 +62,26 @@ title 이 바뀌면 파일명도 바뀌어야 (`{slugify(title)}.md`). PR 에 �
 > 새 파일명으로 rename 했는지 확인해주세요. rename 안 하면 publish 시
 > 새 Dooray 페이지가 만들어지고 이전 페이지가 고아가 됩니다.
 
+### 5. `docs/*.md` 가 삭제됐는데 `@ApiDocs` 는 그대로 남아있음
+
+PR 의 changed-files 목록에서 `docs/{slug}.md` 가 **삭제** 상태(additions=0, deletions>0)이고,
+해당 slug 와 매칭되는 `@*Mapping` 메서드가 여전히 `@ApiDocs` 를 가지고 있는 경우 지적.
+
+`@ApiDocs` 와 md 는 항상 쌍으로 움직여야 정합. 한쪽만 빠지면:
+- `@ApiDocs` 그대로 + md 삭제 → develop 에 md 가 없으니 신규 sync 가 못 일어나고, registry 만 stale 해질 수 있음
+- 관리 페이지의 [🗑 삭제] 버튼은 *registry + Dooray 페이지만* 삭제하므로,
+  `@ApiDocs` 가 남아있는 한 누군가 다시 md 를 만들면 Dooray 페이지가 부활함
+
+**메시지 예시**:
+> `getStatistics` 의 `@ApiDocs` 가 그대로인데 `docs/todo-통계-조회.md` 가 PR 에서 삭제되었습니다.
+> 의도가 무엇인가요?
+> - **문서화 중단** 이면 메서드의 `@ApiDocs` 도 함께 제거해주세요.
+> - **잘못 삭제** 한 것이면 md 를 복원하거나 로컬에서 `/api-docs` 를 다시 실행해주세요.
+
 ## docs/*.md 는 리뷰 대상 아님
 
 `docs/*.md` 는 토큰 부담이 커서 claude-review 의 diff 에 포함하지 않는다.
-대신 Java 변경 만으로 위의 4가지 케이스를 점검:
+대신 Java 변경 + PR changed-files 목록(파일 경로만)으로 위의 5가지 케이스를 점검:
 
 - Java 시그니처는 보이지만 PR 의 changed-files 목록에 매칭되는 `docs/{slug}.md` 가
   안 보이면 → "md 가 빠졌습니다" hint

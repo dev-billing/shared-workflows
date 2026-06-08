@@ -36,7 +36,7 @@ from lib.api_utils import (
     parse_domain_table,
 )
 from lib.dooray import (
-    create_page, get_child_pages, update_page,
+    create_page, get_child_pages, update_page, delete_page,
 )
 from lib.git_utils import git_commit_and_push
 from lib.config import (
@@ -188,6 +188,7 @@ def main():
     pr_number = os.environ.get("PR_NUMBER", "")
     full_sync = os.environ.get("FULL_SYNC", "").lower() == "true"
     single_md_path = os.environ.get("SINGLE_MD_PATH", "").strip()
+    delete_only = os.environ.get("DELETE_ONLY", "").lower() == "true"
 
     if not repo_short:
         print("[ERROR] REPO_NAME 환경변수가 없습니다", file=sys.stderr)
@@ -198,6 +199,62 @@ def main():
     if not dooray_api_key and not dry_run:
         print("[ERROR] DOORAY_API_KEY 가 없습니다", file=sys.stderr)
         sys.exit(1)
+
+    # ── DELETE_ONLY 모드 ──────────────────────────────────────────────
+    # registry + Dooray 페이지만 삭제. md 파일은 건드리지 않는다 (target repo).
+    # 관리 페이지의 행 단위 [🗑 삭제] 버튼이 사용.
+    if delete_only:
+        if not single_md_path:
+            print("[ERROR] DELETE_ONLY=true 인데 SINGLE_MD_PATH 가 비어있습니다", file=sys.stderr)
+            sys.exit(1)
+        if not single_md_path.startswith("docs/"):
+            single_md_path = f"docs/{single_md_path}"
+        registry_path = registry_path_for(repo_short)
+        registry = read_registry(registry_path)
+        # md_path 로 registry 항목 찾기
+        target_key = None
+        for k, v in registry.items():
+            if (v or {}).get("md_path") == single_md_path:
+                target_key = k
+                break
+        if not target_key:
+            print(f"[ERROR] registry 에서 md_path={single_md_path} 를 찾지 못했습니다", file=sys.stderr)
+            sys.exit(1)
+        entry = registry[target_key]
+        page_id = entry.get("page_id")
+        title = entry.get("title") or single_md_path
+
+        if dry_run:
+            print(f"[DRY-RUN] DELETE registry[{target_key}] + Dooray page_id={page_id} ({title})")
+        else:
+            if page_id:
+                try:
+                    delete_page(dooray_api_key, DOORAY_WIKI_ID, page_id, base_url)
+                    print(f"[INFO] DELETE Dooray page_id={page_id}")
+                except Exception as e:
+                    print(f"[WARN] Dooray 페이지 삭제 실패 (이미 삭제되었을 수 있음): {e}", file=sys.stderr)
+            del registry[target_key]
+            write_registry(registry_path, registry)
+            git_commit_and_push(
+                "shared-config",
+                [registry_rel_for(repo_short)],
+                f"chore: delete api doc registry entry - {repo_short} {target_key} [skip ci]",
+            )
+
+        write_summary([
+            f"# REST API Docs DELETE — {repo_short}",
+            "",
+            f"- md_path: {single_md_path}",
+            f"- api_key: {target_key}",
+            f"- page_id: {page_id}",
+            f"- title: {title}",
+            f"- dry_run: {dry_run}",
+            f"- 처리 시각: {now_kst_display()}",
+            "",
+            "> md 파일은 그대로 유지되며, 다음 full_sync 또는 PR 머지 때 다시 생성될 수 있습니다.",
+            "> 영구 삭제를 원하면 PR 로 docs/*.md 도 함께 제거하세요.",
+        ])
+        return
 
     docs_dir = os.path.join(target_repo_path, "docs")
     if not os.path.isdir(docs_dir):

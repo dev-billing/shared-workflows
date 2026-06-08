@@ -2,7 +2,6 @@ import { h, mount } from "../utils/dom.js";
 import { readRegistry, entriesOf, parseApiKey } from "../api/registry.js";
 import { dispatchWorkflow } from "../api/workflows.js";
 import {
-  ORG,
   API_DOCS_WORKFLOW_REF,
   DOORAY_WEB_BASE,
   DOORAY_WIKI_ID,
@@ -93,12 +92,12 @@ export async function renderApiDocs(root, repoName) {
         { class: "matrix-table api-list-table" },
         h("thead", null,
           h("tr", null,
-            h("th", null, "Method"),
-            h("th", null, "Path"),
-            h("th", null, "제목"),
-            h("th", null, "링크"),
-            h("th", null, "마지막 동기화"),
-            h("th", null, "")
+            h("th", { style: { width: "70px" } }, "Method"),
+            h("th", { style: { width: "28%" } }, "Path"),
+            h("th", { style: { width: "32%" } }, "제목"),
+            h("th", { style: { width: "100px" } }, "링크"),
+            h("th", { style: { width: "130px" } }, "마지막 동기화"),
+            h("th", { style: { width: "170px" } }, "")
           )
         ),
         h("tbody", null,
@@ -145,9 +144,6 @@ function renderPublishedRow(apiKey, meta, repoName) {
   const dooray = meta.page_id
     ? `${DOORAY_WEB_BASE}/wiki/${DOORAY_WIKI_ID}/${meta.page_id}`
     : null;
-  const github = meta.md_path
-    ? `https://github.com/${ORG}/${repoName}/blob/develop/${meta.md_path}`
-    : null;
 
   const syncBtn = h(
     "button",
@@ -161,7 +157,7 @@ function renderPublishedRow(apiKey, meta, repoName) {
         if (!meta.md_path) return;
         syncBtn.disabled = true;
         const original = syncBtn.textContent;
-        syncBtn.textContent = "트리거 중...";
+        syncBtn.textContent = "...";
         try {
           await dispatchWorkflow(repoName, "api-doc-pr.yml", API_DOCS_WORKFLOW_REF, {
             dry_run: false,
@@ -180,24 +176,64 @@ function renderPublishedRow(apiKey, meta, repoName) {
     "🔄 동기화"
   );
 
+  const deleteBtn = h(
+    "button",
+    {
+      class: "btn btn--small btn--ghost",
+      style: { color: "#cf222e", border: "1px solid #f1aab2" },
+      title: meta.md_path
+        ? "Dooray 페이지 + registry 항목만 삭제 (md 파일은 그대로). @ApiDocs 가 남아있으면 다음 sync 때 재생성됩니다."
+        : "md_path 정보 없음 — 삭제 불가",
+      disabled: !meta.md_path,
+      onclick: async () => {
+        if (!meta.md_path) return;
+        const msg =
+          `[${method}] ${path}\n` +
+          `${meta.title || ""}\n\n` +
+          `Dooray 페이지와 registry 항목을 삭제합니다.\n` +
+          `docs/${meta.md_path.replace(/^docs\//, "")} 파일은 그대로 유지됩니다.\n\n` +
+          `Controller 에 @ApiDocs 가 남아있으면 다음 동기화 때 Dooray 페이지가 다시 생성됩니다.\n` +
+          `영구 삭제를 원하면 Controller 의 @ApiDocs 와 docs/*.md 를 PR 로 함께 제거하세요.\n\n` +
+          `계속할까요?`;
+        if (!confirm(msg)) return;
+        deleteBtn.disabled = true;
+        const original = deleteBtn.textContent;
+        deleteBtn.textContent = "...";
+        try {
+          await dispatchWorkflow(repoName, "api-doc-pr.yml", API_DOCS_WORKFLOW_REF, {
+            dry_run: false,
+            full_sync: false,
+            single_md_path: meta.md_path,
+            delete_only: true,
+          });
+          toast(`${meta.md_path} 삭제 트리거 완료. Actions 에서 결과 확인 후 페이지 새로고침`, "success");
+        } catch (err) {
+          toast(`실패: ${err.message}`, "error", 5000);
+        } finally {
+          deleteBtn.disabled = false;
+          deleteBtn.textContent = original;
+        }
+      },
+    },
+    "🗑 삭제"
+  );
+
   return h(
     "tr",
     null,
     h("td", null, h("span", { class: `api-method method-${method}` }, method)),
-    h("td", null, h("code", { class: "api-path" }, path)),
-    h("td", null, meta.title || "—"),
+    h("td", null, h("code", { class: "api-path", style: { wordBreak: "break-all" } }, path)),
+    h("td", { style: { wordBreak: "keep-all", whiteSpace: "normal" } }, meta.title || "—"),
     h(
       "td",
       { style: { whiteSpace: "nowrap" } },
-      dooray ? h("a", { href: dooray, target: "_blank", class: "btn btn--small" }, "📄 Dooray") : null,
-      dooray && github ? " " : null,
-      github ? h("a", { href: github, target: "_blank", class: "btn btn--small btn--ghost", style: { color: "#1f2328", border: "1px solid #d0d7de" } }, "📝 md") : null
+      dooray ? h("a", { href: dooray, target: "_blank", class: "btn btn--small" }, "📄 Dooray") : "—"
     ),
     h(
       "td",
       { style: { fontSize: "11px", color: "var(--text-muted)" } },
       meta.last_synced_at ? meta.last_synced_at.slice(0, 16).replace("T", " ") : (meta.updated_at ? meta.updated_at.slice(0, 16).replace("T", " ") : "—")
     ),
-    h("td", null, syncBtn)
+    h("td", { style: { whiteSpace: "nowrap" } }, syncBtn, " ", deleteBtn)
   );
 }
