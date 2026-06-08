@@ -87,7 +87,7 @@ export async function renderApiDocsPicker(root) {
         h("th", { style: { width: "20%" } }, "적용 상태"),
         h("th", { style: { width: "15%" } }, "Published"),
         h("th", { style: { width: "25%" } }, "마지막 동기화"),
-        h("th", { style: { width: "100px" } }, "")
+        h("th", { style: { width: "140px" } }, "")
       )
     ),
     h(
@@ -126,10 +126,14 @@ function renderRow(row, meta) {
     ),
     h(
       "td",
-      null,
+      { style: { whiteSpace: "nowrap" } },
       h(
         "a",
-        { href: `#/api-docs/${row.repo.name}`, class: "btn btn--small" },
+        {
+          href: `#/api-docs/${row.repo.name}`,
+          class: "btn btn--small",
+          style: { whiteSpace: "nowrap" },
+        },
         "관리 →"
       )
     )
