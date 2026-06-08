@@ -22,6 +22,11 @@ on:
         required: false
         type: boolean
         default: true
+      single_md_path:
+        description: "단일 md 파일만 동기화 (예: docs/todo-단건-조회.md). 지정 시 full_sync 무시"
+        required: false
+        type: string
+        default: ""
 
 concurrency:
   group: api-docs-publish-${{ github.repository }}
@@ -49,4 +54,5 @@ jobs:
       # 전달 시 GitHub 가 가끔 string 으로 보고 type mismatch 를 내므로 명시
       dry_run: ${{ inputs.dry_run == true }}
       full_sync: ${{ inputs.full_sync == true }}
+      single_md_path: ${{ inputs.single_md_path }}
     secrets: inherit

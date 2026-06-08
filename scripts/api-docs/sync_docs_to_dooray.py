@@ -174,6 +174,7 @@ def main():
     dry_run = os.environ.get("DRY_RUN", "").lower() == "true"
     pr_number = os.environ.get("PR_NUMBER", "")
     full_sync = os.environ.get("FULL_SYNC", "").lower() == "true"
+    single_md_path = os.environ.get("SINGLE_MD_PATH", "").strip()
 
     if not repo_short:
         print("[ERROR] REPO_NAME 환경변수가 없습니다", file=sys.stderr)
@@ -190,10 +191,20 @@ def main():
         print(f"[INFO] {docs_dir} 디렉토리 없음 — 처리할 md 가 없습니다")
         return
 
-    # 변경된 docs/*.md 만 처리할지, 전체 처리할지 결정
+    # 변경된 docs/*.md 만 처리할지, 단일 파일만 처리할지, 전체 처리할지 결정
     md_files = None
     deleted_files = []
-    if pr_number and not full_sync:
+    if single_md_path:
+        # 정규화 — "docs/foo.md" 또는 "foo.md" 둘 다 허용
+        if not single_md_path.startswith("docs/"):
+            single_md_path = f"docs/{single_md_path}"
+        full = os.path.join(target_repo_path, single_md_path)
+        if not os.path.isfile(full):
+            print(f"[ERROR] {single_md_path} 파일이 target repo 에 없습니다", file=sys.stderr)
+            sys.exit(1)
+        md_files = [full]
+        print(f"[INFO] 단일 파일 모드: {single_md_path}")
+    elif pr_number and not full_sync:
         changed_paths, deleted_paths = get_changed_docs_files(repo_name, pr_number)
         if changed_paths is not None:
             md_files = [os.path.join(target_repo_path, p) for p in changed_paths]

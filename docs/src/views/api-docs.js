@@ -97,7 +97,8 @@ export async function renderApiDocs(root, repoName) {
             h("th", null, "Path"),
             h("th", null, "제목"),
             h("th", null, "링크"),
-            h("th", null, "마지막 동기화")
+            h("th", null, "마지막 동기화"),
+            h("th", null, "")
           )
         ),
         h("tbody", null,
@@ -148,6 +149,37 @@ function renderPublishedRow(apiKey, meta, repoName) {
     ? `https://github.com/${ORG}/${repoName}/blob/develop/${meta.md_path}`
     : null;
 
+  const syncBtn = h(
+    "button",
+    {
+      class: "btn btn--small",
+      title: meta.md_path
+        ? `develop 의 ${meta.md_path} 를 다시 Dooray 로 동기화`
+        : "md_path 정보 없음 — 전체 재동기화 필요",
+      disabled: !meta.md_path,
+      onclick: async () => {
+        if (!meta.md_path) return;
+        syncBtn.disabled = true;
+        const original = syncBtn.textContent;
+        syncBtn.textContent = "트리거 중...";
+        try {
+          await dispatchWorkflow(repoName, "api-doc-pr.yml", API_DOCS_WORKFLOW_REF, {
+            dry_run: false,
+            full_sync: false,
+            single_md_path: meta.md_path,
+          });
+          toast(`${meta.md_path} 동기화 트리거 완료`, "success");
+        } catch (err) {
+          toast(`실패: ${err.message}`, "error", 5000);
+        } finally {
+          syncBtn.disabled = false;
+          syncBtn.textContent = original;
+        }
+      },
+    },
+    "🔄 동기화"
+  );
+
   return h(
     "tr",
     null,
@@ -165,6 +197,7 @@ function renderPublishedRow(apiKey, meta, repoName) {
       "td",
       { style: { fontSize: "11px", color: "var(--text-muted)" } },
       meta.last_synced_at ? meta.last_synced_at.slice(0, 16).replace("T", " ") : (meta.updated_at ? meta.updated_at.slice(0, 16).replace("T", " ") : "—")
-    )
+    ),
+    h("td", null, syncBtn)
   );
 }
