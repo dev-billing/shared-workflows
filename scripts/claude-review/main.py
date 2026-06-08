@@ -390,25 +390,36 @@ def resolve_skill_names(repo_config: str, file_types: Set[str]) -> List[str]:
 
     1순위) repo md에 '기술 스택' 선언이 있으면 해당 목록 사용
     2순위) 선언이 없으면 diff 확장자 기반으로 DEFAULT_SKILL_BY_FILE_TYPE에서 자동 선택
+
+    추가: Java 파일이 diff 에 있으면 'api-docs-coverage' 를 항상 함께 로드해서
+    @ApiDocs 누락·문서 미갱신을 자동 점검.
     """
     if repo_config:
         skill_names = parse_skill_names(repo_config)
         if skill_names:
             print("[INFO] Skills 로드: repo 기술 스택 선언 기반")
-            return skill_names
-
-    fallback_names = []
-    for file_type in sorted(file_types):
-        skill_name = DEFAULT_SKILL_BY_FILE_TYPE.get(file_type)
-        if skill_name and skill_name not in fallback_names:
-            fallback_names.append(skill_name)
-
-    if fallback_names:
-        print(f"[INFO] Skills 로드: repo 설정 없음 → 확장자 기반 자동 선택 {fallback_names}")
+        else:
+            skill_names = []
     else:
+        skill_names = []
+
+    if not skill_names:
+        for file_type in sorted(file_types):
+            skill_name = DEFAULT_SKILL_BY_FILE_TYPE.get(file_type)
+            if skill_name and skill_name not in skill_names:
+                skill_names.append(skill_name)
+        if skill_names:
+            print(f"[INFO] Skills 로드: repo 설정 없음 → 확장자 기반 자동 선택 {skill_names}")
+
+    # 공통 부가 skill — Java 파일이 변경됐으면 항상 @ApiDocs 커버리지 점검 동봉
+    if "java" in file_types and "api-docs-coverage" not in skill_names:
+        skill_names.append("api-docs-coverage")
+        print("[INFO] Skills 로드: Java 변경 감지 → api-docs-coverage 추가")
+
+    if not skill_names:
         print("[INFO] Skills 로드: 매핑되는 기본 skill 없음")
 
-    return fallback_names
+    return skill_names
 
 
 def load_skills(skill_names: List[str]) -> Dict[str, str]:
