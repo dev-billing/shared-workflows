@@ -18,7 +18,7 @@ import { ORG, SHARED_WORKFLOWS_REPO } from "../config.js";
 import { readMeta, writeMeta } from "../api/meta-yml.js";
 import { toast } from "../utils/toast.js";
 import { buildEnvForm } from "../utils/env-form.js";
-import { encodeB64 } from "../utils/b64.js";
+import { encodeB64, decodeB64 } from "../utils/b64.js";
 
 // 적용 모달.
 //   feature : FEATURES[i]
@@ -199,13 +199,13 @@ export async function applyFeatureToRepo(feature, targetRepo) {
       }
       const tpl = await getFileContent(ORG, SHARED_WORKFLOWS_REPO, file.source);
       if (!tpl) throw new Error(`템플릿 없음: ${file.source}`);
-      sourceContent = atob(tpl.content.replace(/\n/g, ""))
+      sourceContent = decodeB64(tpl.content)
         .replace(/\{\{PACKAGE\}\}/g, rootPackage + ".apidoc");
       targetPath = file.target.replace(/\{PACKAGE_PATH\}/g, rootPackagePath);
     } else {
       const source = await getFileContent(ORG, SHARED_WORKFLOWS_REPO, file.source);
       if (!source) throw new Error(`템플릿 없음: ${file.source}`);
-      sourceContent = atob(source.content.replace(/\n/g, ""));
+      sourceContent = decodeB64(source.content);
     }
     const existing = await getFileContent(
       targetRepo.owner.login,
@@ -306,13 +306,13 @@ async function applyFeature(feature, targetRepo, statusBox) {
       if (!rootPackage) continue;
       const tpl = await getFileContent(ORG, SHARED_WORKFLOWS_REPO, file.source);
       if (!tpl) throw new Error(`템플릿 없음: ${file.source}`);
-      sourceContent = atob(tpl.content.replace(/\n/g, ""))
+      sourceContent = decodeB64(tpl.content)
         .replace(/\{\{PACKAGE\}\}/g, rootPackage + ".apidoc");
       targetPath = file.target.replace(/\{PACKAGE_PATH\}/g, rootPackagePath);
     } else {
       const source = await getFileContent(ORG, SHARED_WORKFLOWS_REPO, file.source);
       if (!source) throw new Error(`템플릿 없음: ${file.source}`);
-      sourceContent = atob(source.content.replace(/\n/g, ""));
+      sourceContent = decodeB64(source.content);
     }
 
     const existing = await getFileContent(
