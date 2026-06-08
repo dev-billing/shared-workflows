@@ -128,6 +128,43 @@ def derive_title(content: str, filename: str) -> str:
 
 # ── 메인 흐름 ───────────────────────────────────────────────────────────────
 
+def get_changed_docs_files(repo_name: str, pr_number: str) -> list:
+    """gh CLI 로 PR 의 변경 파일 목록을 받아 docs/*.md (excluding _meta.yml) 만 추림.
+
+    삭제된 파일은 별도 list 로 분리 — 현재는 sync 에서 처리 안 함 (warn).
+    리턴: (changed_or_added_paths, deleted_paths) 두 리스트 (target_repo 기준 상대 경로)
+    """
+    import subprocess
+    try:
+        out = subprocess.check_output(
+            ["gh", "pr", "view", pr_number, "--repo", repo_name,
+             "--json", "files", "--jq", ".files[] | [.path, .additions, .deletions] | @tsv"],
+            text=True,
+        )
+    except Exception as e:
+        print(f"[WARN] PR 변경 파일 조회 실패: {e} — 전체 스캔으로 fallback", file=sys.stderr)
+        return None, None
+    changed = []
+    deleted = []
+    for line in out.strip().split("\n"):
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        path = parts[0]
+        adds = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+        dels = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0
+        if not path.startswith("docs/") or not path.endswith(".md"):
+            continue
+        if os.path.basename(path).startswith("_"):
+            continue
+        # 추가/삭제 라인 모두 있고 additions==0 이면 삭제로 간주 (heuristic)
+        if adds == 0 and dels > 0:
+            deleted.append(path)
+        else:
+            changed.append(path)
+    return changed, deleted
+
+
 def main():
     dooray_api_key = os.environ.get("DOORAY_API_KEY", "")
     base_url = os.environ.get("DOORAY_BASE_URL", "https://api.dooray.com")
@@ -135,6 +172,8 @@ def main():
     repo_short = repo_name.split("/")[-1] if repo_name else ""
     target_repo_path = os.environ.get("TARGET_REPO_PATH", "")
     dry_run = os.environ.get("DRY_RUN", "").lower() == "true"
+    pr_number = os.environ.get("PR_NUMBER", "")
+    full_sync = os.environ.get("FULL_SYNC", "").lower() == "true"
 
     if not repo_short:
         print("[ERROR] REPO_NAME 환경변수가 없습니다", file=sys.stderr)
@@ -151,12 +190,28 @@ def main():
         print(f"[INFO] {docs_dir} 디렉토리 없음 — 처리할 md 가 없습니다")
         return
 
-    md_files = sorted(
-        os.path.join(docs_dir, f) for f in os.listdir(docs_dir)
-        if f.endswith(".md") and not f.startswith("_")
-    )
+    # 변경된 docs/*.md 만 처리할지, 전체 처리할지 결정
+    md_files = None
+    deleted_files = []
+    if pr_number and not full_sync:
+        changed_paths, deleted_paths = get_changed_docs_files(repo_name, pr_number)
+        if changed_paths is not None:
+            md_files = [os.path.join(target_repo_path, p) for p in changed_paths]
+            deleted_files = deleted_paths or []
+            print(f"[INFO] PR #{pr_number} 의 변경된 docs/*.md: {len(md_files)}개, 삭제: {len(deleted_files)}개")
+            if deleted_files:
+                print(f"[WARN] 삭제된 md 가 있지만 자동 Dooray 페이지 처리는 아직 미지원: {deleted_files}", file=sys.stderr)
+
+    if md_files is None:
+        # fallback — 전체 스캔
+        md_files = sorted(
+            os.path.join(docs_dir, f) for f in os.listdir(docs_dir)
+            if f.endswith(".md") and not f.startswith("_")
+        )
+        print(f"[INFO] 전체 스캔 모드: {len(md_files)}개")
+
     if not md_files:
-        print("[INFO] docs/*.md 파일이 없습니다")
+        print("[INFO] 처리할 docs/*.md 파일이 없습니다")
         return
 
     registry_path = registry_path_for(repo_short)

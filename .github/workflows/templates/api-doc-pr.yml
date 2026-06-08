@@ -17,6 +17,11 @@ on:
         required: false
         type: boolean
         default: false
+      full_sync:
+        description: "전체 docs/*.md 재동기화 (특정 PR 변경분 한정 안 함)"
+        required: false
+        type: boolean
+        default: true
 
 concurrency:
   group: api-docs-publish-${{ github.repository }}
@@ -30,6 +35,8 @@ jobs:
     with:
       repo_name: ${{ github.repository }}
       dry_run: false
+      pr_number: ${{ github.event.pull_request.number }}
+      full_sync: false
     secrets: inherit
 
   sync-manual:
@@ -41,4 +48,5 @@ jobs:
       # workflow_dispatch input 의 boolean 을 reusable 의 boolean input 으로
       # 전달 시 GitHub 가 가끔 string 으로 보고 type mismatch 를 내므로 명시
       dry_run: ${{ inputs.dry_run == true }}
+      full_sync: ${{ inputs.full_sync == true }}
     secrets: inherit

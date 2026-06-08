@@ -15,6 +15,16 @@ on:
         type: boolean
         default: false
         description: "true 면 Dooray 호출 없이 미리보기만"
+      pr_number:
+        required: false
+        type: string
+        default: ""
+        description: "PR 번호 — 지정 시 그 PR 의 변경된 docs/*.md 만 처리. 미지정/비어있으면 전체 스캔"
+      full_sync:
+        required: false
+        type: boolean
+        default: false
+        description: "true 면 pr_number 있어도 전체 스캔 (수동 보정용)"
     secrets:
       CODE_REVIEW_APP_ID:
         required: true
@@ -58,9 +68,12 @@ jobs:
         env:
           DOORAY_API_KEY: ${{ secrets.DOORAY_API_KEY }}
           ORG_GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO_NAME: ${{ inputs.repo_name }}
           TARGET_REPO_PATH: ${{ github.workspace }}/target-repo
           DRY_RUN: ${{ inputs.dry_run }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          FULL_SYNC: ${{ inputs.full_sync }}
         run: python3 shared-config/scripts/api-docs/sync_docs_to_dooray.py
 
       - name: Cleanup workspace
