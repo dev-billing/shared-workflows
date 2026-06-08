@@ -48,7 +48,7 @@ export const FEATURES = [
       {
         // ApiDocs.java 어노테이션 자동 배포 (placeholder 치환)
         source: ".github/workflows/templates/ApiDocs.java.template",
-        target: "src/main/java/{PACKAGE_PATH}/apidoc/ApiDocs.java",
+        target: "src/main/java/{PACKAGE_PATH}/common/apidoc/ApiDocs.java",
         transform: "java-package",
       },
     ],

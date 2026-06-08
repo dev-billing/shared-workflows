@@ -200,7 +200,7 @@ export async function applyFeatureToRepo(feature, targetRepo) {
       const tpl = await getFileContent(ORG, SHARED_WORKFLOWS_REPO, file.source);
       if (!tpl) throw new Error(`템플릿 없음: ${file.source}`);
       sourceContent = decodeB64(tpl.content)
-        .replace(/\{\{PACKAGE\}\}/g, rootPackage + ".apidoc");
+        .replace(/\{\{PACKAGE\}\}/g, rootPackage + ".common.apidoc");
       targetPath = file.target.replace(/\{PACKAGE_PATH\}/g, rootPackagePath);
     } else {
       const source = await getFileContent(ORG, SHARED_WORKFLOWS_REPO, file.source);
@@ -307,7 +307,7 @@ async function applyFeature(feature, targetRepo, statusBox) {
       const tpl = await getFileContent(ORG, SHARED_WORKFLOWS_REPO, file.source);
       if (!tpl) throw new Error(`템플릿 없음: ${file.source}`);
       sourceContent = decodeB64(tpl.content)
-        .replace(/\{\{PACKAGE\}\}/g, rootPackage + ".apidoc");
+        .replace(/\{\{PACKAGE\}\}/g, rootPackage + ".common.apidoc");
       targetPath = file.target.replace(/\{PACKAGE_PATH\}/g, rootPackagePath);
     } else {
       const source = await getFileContent(ORG, SHARED_WORKFLOWS_REPO, file.source);
