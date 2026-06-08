@@ -296,9 +296,12 @@ def main():
 
     if not dry_run:
         write_registry(registry_path, registry)
+        # registry 파일은 shared-workflows checkout 디렉토리("shared-config") 안에 있음.
+        # git_commit_and_push 는 (repo_dir, files[리포 상대 경로], message) 시그니처.
         git_commit_and_push(
-            files=[registry_path],
-            message=f"chore: sync api docs to dooray - {repo_short} [skip ci]",
+            "shared-config",
+            [registry_rel_for(repo_short)],
+            f"chore: sync api docs to dooray - {repo_short} [skip ci]",
         )
 
     # 요약
